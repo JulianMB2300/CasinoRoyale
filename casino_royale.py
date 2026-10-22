@@ -165,6 +165,8 @@ class ClienteCasinoRed:
                             self.app.root.after(0, lambda: self.app.aplicar_nueva_ronda_red(payload))
                         elif tipo == "ACCION_JUEGO":
                             self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
+                        elif tipo == "FINALIZAR_PARTIDA":
+                            self.app.root.after(0, lambda: self.app.finalizar_juego_red())
                 except websockets.exceptions.ConnectionClosed:
                     print("⚠️ La conexión con el servidor se cerró.")
 
@@ -1129,8 +1131,9 @@ class CasinoRoyaleApp:
         else:
             self.turno_jugador = 1
             if not self.mano_j1 and not self.mano_j2:
-                # Si estamos en la última ronda (6), terminamos el juego directamente
                 if self.ronda_actual >= len(self.distribucion_rondas):
+                    if self.modo_juego == 'online' and self.cliente_red:
+                        self.cliente_red.enviar_accion("FINALIZAR_PARTIDA", {})
                     self.finalizar_juego()
                     return
 
@@ -1146,6 +1149,12 @@ class CasinoRoyaleApp:
                     return
 
         self.actualizar_vista()
+
+    def finalizar_juego_red(self):
+        # Evitar duplicar si la ventana ya está en resultados
+        if isinstance(self.root.winfo_children()[-1], tk.Frame) and any(w.cget("text") == "♠ FIN DE LA PARTIDA ♦" for w in self.root.winfo_children()[-1].winfo_children() if isinstance(w, tk.Label)):
+            return
+        self.finalizar_juego()
 
     def finalizar_juego(self):
         if self.mesa:
