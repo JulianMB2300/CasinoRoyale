@@ -165,7 +165,7 @@ class ClienteCasinoRed:
 
         except Exception as e:
             print(f"⚠️ Error de conexión con el servidor WebSocket: {e}")
-            self.app.root.after(0, lambda: messagebox.showerror("Error de Red", f"No se pudo conectar al servidor: {e}"))
+            self.app.root.after(0, lambda e=e: messagebox.showerror("Error de Red", f"No se pudo conectar al servidor: {e}"))
 
     def enviar_accion(self, tipo_accion, datos_accion):
         if self.websocket and self.loop:
