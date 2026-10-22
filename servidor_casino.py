@@ -7,7 +7,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
 
-# Diccionario para almacenar las salas activas y los clientes conectados
 salas = {}
 
 @app.get("/")
@@ -43,7 +42,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         "jugador1": websocket,
                         "jugador2": None,
                         "nombre": sala_id,
-                        "turno": 1  # 1 para Jugador 1, 2 para Jugador 2
+                        "turno": 1,
+                        "ronda": 1,
+                        "distribucion": [5, 4, 4, 4, 4, 5],
+                        "mazo": []
                     }
                     await websocket.send_text(json.dumps({
                         "tipo": "SALA_CREADA",
@@ -56,13 +58,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         sala_actual = sala_id
                         salas[sala_id]["jugador2"] = websocket
                         
-                        # Notificar al jugador 2 que se unió
                         await websocket.send_text(json.dumps({
                             "tipo": "UNIDO_SALA",
                             "datos": {"sala_id": sala_id, "id_jugador": 2}
                         }))
                         
-                        # Iniciar la partida para ambos
+                        # Crear mazo inicial
+                        s = salas[sala_id]
                         palo_list = ['Corazones', 'Diamantes', 'Tréboles', 'Picas']
                         deck = []
                         for p in palo_list:
@@ -70,26 +72,22 @@ async def websocket_endpoint(websocket: WebSocket):
                                 deck.append({"palo": p, "nominal": v, "es_mona": False})
                         deck.append({"palo": 'Especial', "nominal": 15, "es_mona": True})
                         random.shuffle(deck)
+                        s["mazo"] = deck
                         
-                        carta_mesa = [deck.pop()]
-                        m1 = [deck.pop() for _ in range(5)]
-                        m2 = [deck.pop() for _ in range(5)]
+                        carta_mesa = [s["mazo"].pop()]
+                        cant = s["distribucion"][0]
+                        m1 = [s["mazo"].pop() for _ in range(cant)]
+                        m2 = [s["mazo"].pop() for _ in range(cant)]
                         
                         payload_partida = {
                             "mesa_inicial": carta_mesa,
                             "mano_j1": m1,
                             "mano_j2": m2,
-                            "turno_inicial": 1
+                            "ronda": 1
                         }
                         
-                        await salas[sala_id]["jugador1"].send_text(json.dumps({
-                            "tipo": "INICIAR_PARTIDA",
-                            "datos": payload_partida
-                        }))
-                        await salas[sala_id]["jugador2"].send_text(json.dumps({
-                            "tipo": "INICIAR_PARTIDA",
-                            "datos": payload_partida
-                        }))
+                        await s["jugador1"].send_text(json.dumps({"tipo": "INICIAR_PARTIDA", "datos": payload_partida}))
+                        await s["jugador2"].send_text(json.dumps({"tipo": "INICIAR_PARTIDA", "datos": payload_partida}))
                     else:
                         await websocket.send_text(json.dumps({
                             "tipo": "ERROR",
@@ -102,13 +100,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         es_jugador_1 = (websocket == s["jugador1"])
                         id_emisor = 1 if es_jugador_1 else 2
                         
-                        # Validar si realmente es el turno del emisor en el servidor
                         if s.get("turno", 1) == id_emisor:
-                            # Alternar el turno automáticamente (1 pasa a 2, 2 pasa a 1)
                             s["turno"] = 2 if s["turno"] == 1 else 1
                             datos["nuevo_turno"] = s["turno"]
                             
-                            # Reenviar la acción únicamente al otro jugador con el turno actualizado
                             otro_jugador = s["jugador2"] if es_jugador_1 else s["jugador1"]
                             if otro_jugador:
                                 await otro_jugador.send_text(json.dumps({
@@ -116,11 +111,27 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "datos": datos
                                 }))
                         else:
-                            # Si no es su turno, rechazar la jugada
                             await websocket.send_text(json.dumps({
                                 "tipo": "ERROR_TURNO",
-                                "datos": {"mensaje": "No es tu turno de jugar"}
+                                "datos": {"mensaje": "No es tu turno"}
                             }))
+
+                elif tipo == "REPARTIR_RONDA":
+                    if sala_actual and sala_actual in salas:
+                        s = salas[sala_actual]
+                        ronda_nueva = datos.get("ronda")
+                        if ronda_nueva < len(s["distribucion"]):
+                            cant = s["distribucion"][ronda_nueva - 1]
+                            m1 = [s["mazo"].pop() for _ in range(min(cant, len(s["mazo"])))]
+                            m2 = [s["mazo"].pop() for _ in range(min(cant, len(s["mazo"])))]
+                            
+                            payload_ronda = {
+                                "ronda": ronda_nueva,
+                                "mano_j1": m1,
+                                "mano_j2": m2
+                            }
+                            await s["jugador1"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
+                            await s["jugador2"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
 
             except json.JSONDecodeError:
                 pass
