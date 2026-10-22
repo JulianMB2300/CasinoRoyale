@@ -1,132 +1,117 @@
 import asyncio
 import json
-import random
-import websockets
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-PALOS_MAP = {
-    'Corazones': 'hearts',
-    'Diamantes': 'diamonds',
-    'Tréboles': 'clubs',
-    'Picas': 'spades'
-}
+app = FastAPI()
 
-class Carta:
-    def __init__(self, palo, nominal, es_mona=False):
-        self.palo = palo
-        self.nominal = nominal
-        self.es_mona = es_mona
+# Diccionario para almacenar las salas activas y los clientes conectados
+salas = {}
 
-    def to_dict(self):
-        return {'palo': self.palo, 'nominal': self.nominal, 'es_mona': self.es_mona}
+@app.get("/")
+def health_check():
+    return {"status": "ok", "message": "Casino Master Server is running"}
 
-class Mazo:
-    def __init__(self):
-        self.cartas = []
-        self.reiniciar_y_mezclar()
-
-    def reiniciar_y_mezclar(self):
-        self.cartas = []
-        for palo in ['Corazones', 'Diamantes', 'Tréboles', 'Picas']:
-            for val in range(1, 14):
-                self.cartas.append(Carta(palo, val))
-        self.cartas.append(Carta('Especial', 15, es_mona=True))
-        random.shuffle(self.cartas)
-
-    def robar(self):
-        return self.cartas.pop() if self.cartas else None
-
-# Almacenamiento global de salas y conexiones
-SALAS = {}
-JUGADORES = {}
-
-async def manejar_conexion(websocket):
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
     username = "Jugador"
+    sala_actual = None
+    
     try:
-        async for mensaje in websocket:
-            data = json.loads(mensaje)
-        tipo = data.get("tipo")
-        datos = data.get("datos", {})
+        async for raw_message in websocket:
+            try:
+                mensaje = json.loads(raw_message)
+                tipo = mensaje.get("tipo")
+                datos = mensaje.get("datos", {})
 
-        if tipo == "ACCION_JUEGO":
-            # Buscar en qué sala está este websocket y reenviar la jugada al otro jugador
-            for s_id, info in SALAS.items():
-                if websocket in info["jugadores"]:
-                    for ws in info["jugadores"]:
-                        if ws != websocket:
-                            await ws.send(json.dumps(data))
-                    break
-
-            if tipo == "LOGIN":
-                username = datos.get("username", "Jugador")
-                JUGADORES[websocket] = username
-                perfil = {"username": username, "fichas": 10000}
-                await websocket.send(json.dumps({
-                    "tipo": "LOGIN_EXITOSO",
-                    "datos": {"perfil": perfil}
-                }))
-
-            elif tipo == "CREAR_SALA":
-                sala_id = f"sala_{random.randint(1000, 9999)}"
-                SALAS[sala_id] = {
-                    "id": sala_id,
-                    "creador": websocket,
-                    "jugadores": [websocket],
-                    "estado": "ESPERANDO"
-                }
-                await websocket.send(json.dumps({
-                    "tipo": "SALA_CREADA",
-                    "datos": {"sala_id": sala_id, "nombre": f"Mesa de {username}"}
-                }))
-
-            elif tipo == "UNIR_SALA":
-                sala_id = datos.get("sala_id")
-                if sala_id in SALAS and len(SALAS[sala_id]["jugadores"]) < 2:
-                    SALAS[sala_id]["jugadores"].append(websocket)
-                    SALAS[sala_id]["estado"] = "LLENA"
-
-                    # 1. Notificar a ambos jugadores que la sala ya está lista
-                    for idx, ws in enumerate(SALAS[sala_id]["jugadores"]):
-                        await ws.send(json.dumps({
-                            "tipo": "UNIDO_SALA",
-                            "datos": {"sala_id": sala_id, "id_jugador": idx + 1}
-                        }))
-
-                    # 2. Generar partida inicial y sincronizar a ambos
-                    mazo = Mazo()
-                    carta_inicial = mazo.robar()
-                    mano_j1 = [mazo.robar().to_dict() for _ in range(5)]
-                    mano_j2 = [mazo.robar().to_dict() for _ in range(5)]
-
-                    payload_inicio = {
-                        "tipo": "INICIAR_PARTIDA",
-                        "datos": {
-                            "sala_id": sala_id,
-                            "mesa_inicial": [carta_inicial.to_dict()],
-                            "mano_j1": mano_j1,
-                            "mano_j2": mano_j2
-                        }
-                    }
-
-                    for ws in SALAS[sala_id]["jugadores"]:
-                        await ws.send(json.dumps(payload_inicio))
-                else:
-                    await websocket.send(json.dumps({
-                        "tipo": "ERROR_SALA",
-                        "datos": {"mensaje": "La sala no existe o está llena"}
+                if tipo == "LOGIN":
+                    username = datos.get("username", "Jugador")
+                    perfil = {"username": username, "fichas": 10000}
+                    await websocket.send_text(json.dumps({
+                        "tipo": "LOGIN_EXITOSO",
+                        "datos": {"perfil": perfil}
                     }))
 
-    except websockets.exceptions.ConnectionClosed:
-        pass
-    finally:
-        if websocket in JUGADORES:
-            del JUGADORES[websocket]
+                elif tipo == "CREAR_SALA":
+                    import random
+                    sala_id = f"sala_{random.randint(1000, 9999)}"
+                    sala_actual = sala_id
+                    salas[sala_id] = {
+                        "jugador1": websocket,
+                        "jugador2": None,
+                        "nombre": sala_id
+                    }
+                    await websocket.send_text(json.dumps({
+                        "tipo": "SALA_CREADA",
+                        "datos": {"sala_id": sala_id, "nombre": sala_id}
+                    }))
 
-async def main():
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    async with websockets.serve(manejar_conexion, "0.0.0.0", port):
-        print(f"🚀 Servidor Casino Master escuchando en el puerto {port}")
-        await asyncio.Future()
+                elif tipo == "UNIR_SALA":
+                    sala_id = datos.get("sala_id")
+                    if sala_id in salas and salas[sala_id]["jugador2"] is None:
+                        sala_actual = sala_id
+                        salas[sala_id]["jugador2"] = websocket
+                        
+                        # Notificar al jugador 2 que se unió
+                        await websocket.send_text(json.dumps({
+                            "tipo": "UNIDO_SALA",
+                            "datos": {"sala_id": sala_id, "id_jugador": 2}
+                        }))
+                        
+                        # Iniciar la partida para ambos creando un mazo y barajando cartas iniciales
+                        import random
+                        # Creamos una baraja temporal para la partida
+                        palo_list = ['Corazones', 'Diamantes', 'Tréboles', 'Picas']
+                        deck = []
+                        for p in palo_list:
+                            for v in range(1, 14):
+                                deck.append({"palo": p, "nominal": v, "es_mona": False})
+                        deck.append({"palo": 'Especial', "nominal": 15, "es_mona": True})
+                        random.shuffle(deck)
+                        
+                        carta_mesa = [deck.pop()]
+                        m1 = [deck.pop() for _ in range(5)]
+                        m2 = [deck.pop() for _ in range(5)]
+                        
+                        payload_partida = {
+                            "mesa_inicial": carta_mesa,
+                            "mano_j1": m1,
+                            "mano_j2": m2
+                        }
+                        
+                        # Enviar a jugador 1 y jugador 2
+                        await salas[sala_id]["jugador1"].send_text(json.dumps({
+                            "tipo": "INICIAR_PARTIDA",
+                            "datos": payload_partida
+                        }))
+                        await salas[sala_id]["jugador2"].send_text(json.dumps({
+                            "tipo": "INICIAR_PARTIDA",
+                            "datos": payload_partida
+                        }))
+                    else:
+                        await websocket.send_text(json.dumps({
+                            "tipo": "ERROR",
+                            "datos": {"mensaje": "Sala no encontrada o llena"}
+                        }))
+
+                elif tipo == "ACCION_JUEGO":
+                    if sala_actual and sala_actual in salas:
+                        s = salas[sala_actual]
+                        # Reenviar la acción al otro jugador
+                        otro_jugador = s["jugador2"] if websocket == s["jugador1"] else s["jugador1"]
+                        if otro_jugador:
+                            await otro_jugador.send_text(json.dumps({
+                                "tipo": "ACCION_JUEGO",
+                                "datos": datos
+                            }))
+
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        if sala_actual and sala_actual in salas:
+            del salas[sala_actual]
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run("servidor_casino:app", host="0.0.0.0", port=8080, reload=True)
