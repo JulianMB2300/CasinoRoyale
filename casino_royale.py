@@ -277,10 +277,11 @@ class CasinoRoyaleApp:
         self.cliente_red.iniciar_conexion(username)
 
     def notificar_login_exitoso(self, perfil):
-        self.perfil_usuario = perfil
-        # Aquí cambias el texto o habilitas los botones del lobby
-        self.lbl_estado_conexion.config(text="¡Conectado con éxito!")
-        # Habilitar botones de crear o unirse mesa
+        fichas = perfil.get('fichas', 10000)
+        username = perfil.get('username', 'Jugador')
+        self.lbl_estado_lobby.config(text=f"✅ ¡Conectado como {username}!\n🪙 Fichas en Supabase: {fichas}")
+        self.btn_crear_sala.config(state="normal")
+        self.btn_unirse_sala.config(state="normal")
 
     def crear_sala_online(self):
         if self.cliente_red:
