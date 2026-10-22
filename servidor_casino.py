@@ -100,16 +100,20 @@ async def websocket_endpoint(websocket: WebSocket):
                         es_jugador_1 = (websocket == s["jugador1"])
                         id_emisor = 1 if es_jugador_1 else 2
                         
+                        # Validar estrictamente el turno actual en el servidor
                         if s.get("turno", 1) == id_emisor:
+                            # Cambiar de turno oficialmente
                             s["turno"] = 2 if s["turno"] == 1 else 1
                             datos["nuevo_turno"] = s["turno"]
                             
-                            otro_jugador = s["jugador2"] if es_jugador_1 else s["jugador1"]
-                            if otro_jugador:
-                                await otro_jugador.send_text(json.dumps({
-                                    "tipo": "ACCION_JUEGO",
-                                    "datos": datos
-                                }))
+                            # Enviar la acción confirmada a AMBOS jugadores para mantener sincronización perfecta
+                            mensaje_respuesta = json.dumps({
+                                "tipo": "ACCION_JUEGO",
+                                "datos": datos
+                            })
+                            await s["jugador1"].send_text(mensaje_respuesta)
+                            if s["jugador2"]:
+                                await s["jugador2"].send_text(mensaje_respuesta)
                         else:
                             await websocket.send_text(json.dumps({
                                 "tipo": "ERROR_TURNO",
@@ -120,7 +124,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if sala_actual and sala_actual in salas:
                         s = salas[sala_actual]
                         ronda_nueva = datos.get("ronda")
-                        if ronda_nueva < len(s["distribucion"]):
+                        if ronda_nueva <= len(s["distribucion"]):
                             cant = s["distribucion"][ronda_nueva - 1]
                             m1 = [s["mazo"].pop() for _ in range(min(cant, len(s["mazo"])))]
                             m2 = [s["mazo"].pop() for _ in range(min(cant, len(s["mazo"])))]
@@ -131,7 +135,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "mano_j2": m2
                             }
                             await s["jugador1"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
-                            await s["jugador2"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
+                            if s["jugador2"]:
+                                await s["jugador2"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
 
             except json.JSONDecodeError:
                 pass
