@@ -2,111 +2,121 @@ import asyncio
 import json
 import random
 import websockets
-from supabase import create_client, Client
 
-# ==========================================
-# CONFIGURACIÓN DE SUPABASE (Tus credenciales)
-# ==========================================
-SUPABASE_URL = "https://gywyghqttyvvgzpcyoms.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5d3lnaHF0dHl2dmd6cGN5b21zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2OTI4ODIsImV4cCI6MjEwODI2ODg4Mn0.bvmYqAgBIQi2NYntOekELCU4Vbt1KX7n4_15SBYNYfI"
+PALOS_MAP = {
+    'Corazones': 'hearts',
+    'Diamantes': 'diamonds',
+    'Tréboles': 'clubs',
+    'Picas': 'spades'
+}
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+class Carta:
+    def __init__(self, palo, nominal, es_mona=False):
+        self.palo = palo
+        self.nominal = nominal
+        self.es_mona = es_mona
 
-# ==========================================
-# GESTOR DE SALAS Y CONEXIONES (LOBBY)
-# ==========================================
-CLIENTES_CONECTADOS = {}  # {websocket: user_data}
-SALAS_JUEGO = {}           # {sala_id: datos_sala}
+    def to_dict(self):
+        return {'palo': self.palo, 'nominal': self.nominal, 'es_mona': self.es_mona}
 
-async def registrar_usuario_db(user_id, username):
-    """Verifica o crea el perfil del usuario en Supabase de forma segura."""
-    try:
-        res = supabase.table('perfiles').select('*').eq('id', str(user_id)).execute()
-        if not res.data:
-            nueva_cuenta = {
-                'id': str(user_id),
-                'username': username,
-                'fichas': 10000,
-                'nivel': 1,
-                'victorias': 0,
-                'derrotas': 0
-            }
-            supabase.table('perfiles').insert(nueva_cuenta).execute()
-            return nueva_cuenta
-        return res.data[0]
-    except Exception as e:
-        print(f"⚠️ Error accediendo a Supabase: {e}")
-        return {
-            'id': str(user_id),
-            'username': username,
-            'fichas': 10000,
-            'nivel': 1,
-            'victorias': 0,
-            'derrotas': 0
-        }
+class Mazo:
+    def __init__(self):
+        self.cartas = []
+        self.reiniciar_y_mezclar()
 
-# ==========================================
-# MANEJADOR PRINCIPAL DE WEBSOCKETS
-# ==========================================
-async def manejador_conexion(websocket):
-    print(f"🔌 Nueva conexión establecida desde {websocket.remote_address}")
-    CLIENTES_CONECTADOS[websocket] = None
+    def reiniciar_y_mezclar(self):
+        self.cartas = []
+        for palo in ['Corazones', 'Diamantes', 'Tréboles', 'Picas']:
+            for val in range(1, 14):
+                self.cartas.append(Carta(palo, val))
+        self.cartas.append(Carta('Especial', 15, es_mona=True))
+        random.shuffle(self.cartas)
 
+    def robar(self):
+        return self.cartas.pop() if self.cartas else None
+
+# Almacenamiento global de salas y conexiones
+SALAS = {}
+JUGADORES = {}
+
+async def manejar_conexion(websocket):
+    username = "Jugador"
     try:
         async for mensaje in websocket:
-            datos = json.loads(mensaje)
-            tipo = datos.get('tipo')
-            payload = datos.get('datos', {})
+            data = json.loads(mensaje)
+            tipo = data.get("tipo")
+            datos = data.get("datos", {})
 
-            if tipo == 'LOGIN':
-                username = payload.get('username', 'Jugador')
-                user_id = payload.get('user_id', str(hash(username)))
-                
-                perfil = await registrar_usuario_db(user_id, username)
-                CLIENTES_CONECTADOS[websocket] = perfil
+            if tipo == "LOGIN":
+                username = datos.get("username", "Jugador")
+                JUGADORES[websocket] = username
+                perfil = {"username": username, "fichas": 10000}
+                await websocket.send(json.dumps({
+                    "tipo": "LOGIN_EXITOSO",
+                    "datos": {"perfil": perfil}
+                }))
 
-                respuesta = {
-                    'tipo': 'LOGIN_EXITOSO',
-                    'datos': {
-                        'perfil': perfil,
-                        'salas_disponibles': list(SALAS_JUEGO.keys())
-                    }
-                }
-                await websocket.send(json.dumps(respuesta))
-                print(f"✅ Usuario autenticado en Supabase: {username} ({perfil.get('fichas', 0)} 🪙)")
-
-            elif tipo == 'CREAR_SALA':
-                nombre_sala = f"Mesa de {CLIENTES_CONECTADOS[websocket]['username']}"
+            elif tipo == "CREAR_SALA":
                 sala_id = f"sala_{random.randint(1000, 9999)}"
-                
-                SALAS_JUEGO[sala_id] = {
-                    'nombre': nombre_sala,
-                    'host': websocket,
-                    'jugadores': [CLIENTES_CONECTADOS[websocket]],
-                    'estado': 'esperando'
+                SALAS[sala_id] = {
+                    "id": sala_id,
+                    "creador": websocket,
+                    "jugadores": [websocket],
+                    "estado": "ESPERANDO"
                 }
+                await websocket.send(json.dumps({
+                    "tipo": "SALA_CREADA",
+                    "datos": {"sala_id": sala_id, "nombre": f"Mesa de {username}"}
+                }))
 
-                respuesta = {
-                    'tipo': 'SALA_CREADA',
-                    'datos': {'sala_id': sala_id, 'nombre': nombre_sala}
-                }
-                await websocket.send(json.dumps(respuesta))
-                print(f"🎲 Sala creada: {sala_id}")
+            elif tipo == "UNIR_SALA":
+                sala_id = datos.get("sala_id")
+                if sala_id in SALAS and len(SALAS[sala_id]["jugadores"]) < 2:
+                    SALAS[sala_id]["jugadores"].append(websocket)
+                    SALAS[sala_id]["estado"] = "LLENA"
 
-    except websockets.exceptions.ConnectionClosedError:
-        print("⚠️ Un cliente se desconectó repentinamente.")
+                    # 1. Notificar a ambos jugadores que la sala ya está lista
+                    for idx, ws in enumerate(SALAS[sala_id]["jugadores"]):
+                        await ws.send(json.dumps({
+                            "tipo": "UNIDO_SALA",
+                            "datos": {"sala_id": sala_id, "id_jugador": idx + 1}
+                        }))
+
+                    # 2. Generar partida inicial y sincronizar a ambos
+                    mazo = Mazo()
+                    carta_inicial = mazo.robar()
+                    mano_j1 = [mazo.robar().to_dict() for _ in range(5)]
+                    mano_j2 = [mazo.robar().to_dict() for _ in range(5)]
+
+                    payload_inicio = {
+                        "tipo": "INICIAR_PARTIDA",
+                        "datos": {
+                            "sala_id": sala_id,
+                            "mesa_inicial": [carta_inicial.to_dict()],
+                            "mano_j1": mano_j1,
+                            "mano_j2": mano_j2
+                        }
+                    }
+
+                    for ws in SALAS[sala_id]["jugadores"]:
+                        await ws.send(json.dumps(payload_inicio))
+                else:
+                    await websocket.send(json.dumps({
+                        "tipo": "ERROR_SALA",
+                        "datos": {"mensaje": "La sala no existe o está llena"}
+                    }))
+
+    except websockets.exceptions.ConnectionClosed:
+        pass
     finally:
-        if websocket in CLIENTES_CONECTADOS:
-            del CLIENTES_CONECTADOS[websocket]
+        if websocket in JUGADORES:
+            del JUGADORES[websocket]
 
-# ==========================================
-# ARRANQUE DEL SERVIDOR EN LA NUBE O LOCAL
-# ==========================================
 async def main():
     import os
-    PUERTO = int(os.environ.get("PORT", 8080))
-    async with websockets.serve(manejador_conexion, "0.0.0.0", PUERTO):
-        print(f"🚀 Servidor de Casino Master corriendo en puerto {PUERTO}")
+    port = int(os.environ.get("PORT", 8080))
+    async with websockets.serve(manejar_conexion, "0.0.0.0", port):
+        print(f"🚀 Servidor Casino Master escuchando en el puerto {port}")
         await asyncio.Future()
 
 if __name__ == "__main__":

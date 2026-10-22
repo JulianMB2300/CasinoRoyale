@@ -113,9 +113,9 @@ class Mazo:
 
 
 class ClienteCasinoRed:
-    def __init__(self, app_ref, host="localhost", puerto=8080):
+    def __init__(self, app_ref, host=None, puerto=None):
         self.app = app_ref
-        self.uri = f"ws://{host}:{puerto}"
+        self.uri = "wss://casino-master-wiah.onrender.com"
         self.websocket = None
         self.loop = None
         self.hilo = None
@@ -156,7 +156,10 @@ class ClienteCasinoRed:
                         self.app.root.after(0, lambda: self.app.notificar_sala_creada(sala_id, nombre_sala))
                     elif tipo == "UNIDO_SALA":
                         sala_id = payload.get("sala_id")
-                        self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id))
+                        id_jugador = payload.get("id_jugador", 2)
+                        self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
+                    elif tipo == "INICIAR_PARTIDA":
+                        self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
 
         except Exception as e:
             print(f"⚠️ Error de conexión con el servidor WebSocket: {e}")
@@ -287,7 +290,7 @@ class CasinoRoyaleApp:
     def unirse_a_sala_prompt(self):
         sala_id = simpledialog.askstring("Unirse a Mesa", "Ingresa el ID de la sala (ej. sala_1234):")
         if sala_id and self.cliente_red:
-            self.mi_id_jugador = 2  # El segundo jugador es el cliente invitado
+            self.mi_id_jugador = 2
             self.cliente_red.enviar_accion("UNIR_SALA", {"sala_id": sala_id})
             self.lbl_estado_lobby.config(text=f"Conectándose a la sala {sala_id}...")
 
@@ -295,9 +298,21 @@ class CasinoRoyaleApp:
         messagebox.showinfo("Sala Creada", f"¡Mesa creada con éxito!\nID de Sala: {sala_id}\nDale este ID a tu amigo para que se una.")
         self.iniciar_juego('online_activo')
 
-    def notificar_unido_sala(self, sala_id):
-        messagebox.showinfo("Conectado", f"¡Te has unido con éxito a la sala {sala_id}!")
+    def notificar_unido_sala(self, sala_id, id_jugador):
+        self.mi_id_jugador = id_jugador
         self.iniciar_juego('online_activo')
+
+    def iniciar_partida_red(self, payload):
+        datos = payload.get("datos", {})
+        mesa = datos.get("mesa_inicial", [])
+        m_j1 = datos.get("mano_j1", [])
+        m_j2 = datos.get("mano_j2", [])
+
+        self.mesa = [ElementoMesa([Carta.from_dict(c)], c['nominal']) for c in mesa]
+        self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
+        self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
+        self.lbl_seleccion.config(text=f"¡Partida lista! Tu rol: Jugador {self.mi_id_jugador}")
+        self.actualizar_vista()
 
     def iniciar_juego(self, modo):
         if modo == 'online_activo':
@@ -313,7 +328,7 @@ class CasinoRoyaleApp:
         if self.modo_juego not in ['online']:
             self.iniciar_nueva_partida()
         else:
-            self.lbl_seleccion.config(text="Esperando sincronización de partida multijugador...")
+            self.lbl_seleccion.config(text="Esperando que ambos jugadores estén en la sala...")
 
     def obtener_imagen_carta(self, carta, ancho=80, alto=112):
         if getattr(sys, 'frozen', False):
@@ -552,11 +567,9 @@ class CasinoRoyaleApp:
     def actualizar_vista(self):
         self.fusionar_pilas_mesa()
         
-        es_mi_turno = True
         id_j_actual = self.turno_jugador
         
-        mano_actual = self.mano_j1 if self.turno_jugador == 1 else self.mano_j2
-        pozo_actual = self.pozo_j1 if self.turno_jugador == 1 else self.pozo_j2
+        mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
         
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
         
