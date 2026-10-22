@@ -138,6 +138,14 @@ async def websocket_endpoint(websocket: WebSocket):
                             if s["jugador2"]:
                                 await s["jugador2"].send_text(json.dumps({"tipo": "NUEVA_RONDA", "datos": payload_ronda}))
 
+                elif tipo == "FINALIZAR_PARTIDA":
+                    if sala_actual and sala_actual in salas:
+                        s = salas[sala_actual]
+                        mensaje_fin = json.dumps({"tipo": "FINALIZAR_PARTIDA", "datos": datos})
+                        await s["jugador1"].send_text(mensaje_fin)
+                        if s["jugador2"]:
+                            await s["jugador2"].send_text(mensaje_fin)
+
             except json.JSONDecodeError:
                 pass
 
