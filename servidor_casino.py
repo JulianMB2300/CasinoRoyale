@@ -42,7 +42,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     salas[sala_id] = {
                         "jugador1": websocket,
                         "jugador2": None,
-                        "nombre": sala_id
+                        "nombre": sala_id,
+                        "turno": 1  # 1 para Jugador 1, 2 para Jugador 2
                     }
                     await websocket.send_text(json.dumps({
                         "tipo": "SALA_CREADA",
@@ -61,7 +62,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "datos": {"sala_id": sala_id, "id_jugador": 2}
                         }))
                         
-                        # Iniciar la partida para ambos creando un mazo y barajando cartas iniciales
+                        # Iniciar la partida para ambos
                         palo_list = ['Corazones', 'Diamantes', 'Tréboles', 'Picas']
                         deck = []
                         for p in palo_list:
@@ -77,10 +78,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         payload_partida = {
                             "mesa_inicial": carta_mesa,
                             "mano_j1": m1,
-                            "mano_j2": m2
+                            "mano_j2": m2,
+                            "turno_inicial": 1
                         }
                         
-                        # Enviar a jugador 1 y jugador 2
                         await salas[sala_id]["jugador1"].send_text(json.dumps({
                             "tipo": "INICIAR_PARTIDA",
                             "datos": payload_partida
@@ -98,12 +99,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif tipo == "ACCION_JUEGO":
                     if sala_actual and sala_actual in salas:
                         s = salas[sala_actual]
-                        # Reenviar la acción ÚNICAMENTE al otro jugador de la sala
-                        otro_jugador = s["jugador2"] if websocket == s["jugador1"] else s["jugador1"]
-                        if otro_jugador:
-                            await otro_jugador.send_text(json.dumps({
-                                "tipo": "ACCION_JUEGO",
-                                "datos": datos
+                        es_jugador_1 = (websocket == s["jugador1"])
+                        id_emisor = 1 if es_jugador_1 else 2
+                        
+                        # Validar si realmente es el turno del emisor en el servidor
+                        if s.get("turno", 1) == id_emisor:
+                            # Alternar el turno automáticamente (1 pasa a 2, 2 pasa a 1)
+                            s["turno"] = 2 if s["turno"] == 1 else 1
+                            datos["nuevo_turno"] = s["turno"]
+                            
+                            # Reenviar la acción únicamente al otro jugador con el turno actualizado
+                            otro_jugador = s["jugador2"] if es_jugador_1 else s["jugador1"]
+                            if otro_jugador:
+                                await otro_jugador.send_text(json.dumps({
+                                    "tipo": "ACCION_JUEGO",
+                                    "datos": datos
+                                }))
+                        else:
+                            # Si no es su turno, rechazar la jugada
+                            await websocket.send_text(json.dumps({
+                                "tipo": "ERROR_TURNO",
+                                "datos": {"mensaje": "No es tu turno de jugar"}
                             }))
 
             except json.JSONDecodeError:
