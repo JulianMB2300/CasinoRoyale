@@ -98,9 +98,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif tipo == "ACCION_JUEGO":
                     if sala_actual and sala_actual in salas:
                         s = salas[sala_actual]
-                        # Enviar la acción a todos los demás jugadores en la sala
+                        # Reenviar la acción a TODOS los jugadores de la sala para mantener sincronización perfecta
                         for cliente_ws in [s["jugador1"], s["jugador2"]]:
-                            if cliente_ws and cliente_ws != websocket:
+                            if cliente_ws:
                                 await cliente_ws.send_text(json.dumps({
                                     "tipo": "ACCION_JUEGO",
                                     "datos": datos
