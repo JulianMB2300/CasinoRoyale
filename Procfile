@@ -1,0 +1,1 @@
+web: python servidor_casino.py
