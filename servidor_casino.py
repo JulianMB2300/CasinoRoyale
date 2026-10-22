@@ -44,8 +44,17 @@ async def manejar_conexion(websocket):
     try:
         async for mensaje in websocket:
             data = json.loads(mensaje)
-            tipo = data.get("tipo")
-            datos = data.get("datos", {})
+        tipo = data.get("tipo")
+        datos = data.get("datos", {})
+
+        if tipo == "ACCION_JUEGO":
+            # Buscar en qué sala está este websocket y reenviar la jugada al otro jugador
+            for s_id, info in SALAS.items():
+                if websocket in info["jugadores"]:
+                    for ws in info["jugadores"]:
+                        if ws != websocket:
+                            await ws.send(json.dumps(data))
+                    break
 
             if tipo == "LOGIN":
                 username = datos.get("username", "Jugador")

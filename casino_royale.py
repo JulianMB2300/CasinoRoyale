@@ -160,6 +160,8 @@ class ClienteCasinoRed:
                         self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
                     elif tipo == "INICIAR_PARTIDA":
                         self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
+                    elif tipo == "ACCION_JUEGO":
+                        self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))    
 
         except Exception as e:
             print(f"⚠️ Error de conexión con el servidor WebSocket: {e}")
@@ -319,6 +321,28 @@ class CasinoRoyaleApp:
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
+
+    def procesar_accion_remota(self, payload):
+        tipo_accion = payload.get("tipo_accion")
+        carta_dict = payload.get("carta")
+        jugador_id = payload.get("jugador_id")
+        
+        if tipo_accion == "LANZAR" and carta_dict:
+            carta = Carta.from_dict(carta_dict)
+            mano_oponente = self.mano_j1 if jugador_id == 1 else self.mano_j2
+            
+            # Remover la carta de la mano del oponente
+            for c in list(mano_oponente):
+                if c.nominal == carta.nominal and c.palo == carta.palo:
+                    mano_oponente.remove(c)
+                    break
+                    
+            self.mesa.append(ElementoMesa([carta], carta.nominal))
+            self.fusionar_pilas_mesa()
+            
+            # Cambiar el turno al otro jugador
+            self.turno_jugador = 1 if self.turno_jugador == 2 else 2
+            self.actualizar_vista()    
 
     def iniciar_juego(self, modo):
         if modo == 'online_activo':
@@ -880,8 +904,28 @@ class CasinoRoyaleApp:
         if not self.es_lanzamiento_permitido(carta, id_j):
             return
 
+        # Si estamos en modo online, enviamos la acción al servidor de Render
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("ACCION_JUEGO", {
+                "tipo_accion": "LANZAR",
+                "carta": carta.to_dict(),
+                "jugador_id": self.mi_id_jugador
+            })
+            # Actualizamos nuestra pantalla de inmediato
+            mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
+            if carta in mano_actual:
+                mano_actual.remove(carta)
+            self.mesa.append(ElementoMesa([carta], carta.nominal))
+            self.fusionar_pilas_mesa()
+            self.carta_seleccionada_temporal = None
+            self.indices_mesa_seleccionados = []
+            self.actualizar_vista()
+            return
+
+        # Lógica normal para local / IA
         mano_actual = self.mano_j1 if id_j == 1 else self.mano_j2
-        mano_actual.remove(carta)
+        if carta in mano_actual:
+            mano_actual.remove(carta)
         self.mesa.append(ElementoMesa([carta], carta.nominal))
         self.fusionar_pilas_mesa()
         
