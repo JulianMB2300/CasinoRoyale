@@ -1,6 +1,7 @@
 import asyncio
-import os
 import json
+import os
+import random
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -20,7 +21,8 @@ async def websocket_endpoint(websocket: WebSocket):
     sala_actual = None
     
     try:
-        async for raw_message in websocket:
+        while True:
+            raw_message = await websocket.receive_text()
             try:
                 mensaje = json.loads(raw_message)
                 tipo = mensaje.get("tipo")
@@ -35,7 +37,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     }))
 
                 elif tipo == "CREAR_SALA":
-                    import random
                     sala_id = f"sala_{random.randint(1000, 9999)}"
                     sala_actual = sala_id
                     salas[sala_id] = {
@@ -61,8 +62,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         }))
                         
                         # Iniciar la partida para ambos creando un mazo y barajando cartas iniciales
-                        import random
-                        # Creamos una baraja temporal para la partida
                         palo_list = ['Corazones', 'Diamantes', 'Tréboles', 'Picas']
                         deck = []
                         for p in palo_list:

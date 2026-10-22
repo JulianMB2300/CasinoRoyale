@@ -132,7 +132,7 @@ class ClienteCasinoRed:
 
     async def _conectar_y_escuchar(self, username):
         try:
-            async with websockets.connect(self.uri) as websocket:
+            async with websockets.connect(self.uri, ping_interval=20, ping_timeout=20) as websocket:
                 self.websocket = websocket
                 print(f"🔗 Conectado al servidor central de Casino Master en {self.uri}")
 
@@ -142,26 +142,29 @@ class ClienteCasinoRed:
                 }
                 await websocket.send(json.dumps(mensaje_login))
 
-                async for mensaje in websocket:
-                    datos = json.loads(mensaje)
-                    tipo = datos.get("tipo")
-                    payload = datos.get("datos", {})
+                try:
+                    async for mensaje in websocket:
+                        datos = json.loads(mensaje)
+                        tipo = datos.get("tipo")
+                        payload = datos.get("datos", {})
 
-                    if tipo == "LOGIN_EXITOSO":
-                        self.perfil_usuario = payload.get("perfil")
-                        self.app.root.after(0, lambda: self.app.notificar_login_exitoso(self.perfil_usuario))
-                    elif tipo == "SALA_CREADA":
-                        sala_id = payload.get("sala_id")
-                        nombre_sala = payload.get("nombre")
-                        self.app.root.after(0, lambda: self.app.notificar_sala_creada(sala_id, nombre_sala))
-                    elif tipo == "UNIDO_SALA":
-                        sala_id = payload.get("sala_id")
-                        id_jugador = payload.get("id_jugador", 2)
-                        self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
-                    elif tipo == "INICIAR_PARTIDA":
-                        self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
-                    elif tipo == "ACCION_JUEGO":
-                        self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))    
+                        if tipo == "LOGIN_EXITOSO":
+                            self.perfil_usuario = payload.get("perfil")
+                            self.app.root.after(0, lambda: self.app.notificar_login_exitoso(self.perfil_usuario))
+                        elif tipo == "SALA_CREADA":
+                            sala_id = payload.get("sala_id")
+                            nombre_sala = payload.get("nombre")
+                            self.app.root.after(0, lambda: self.app.notificar_sala_creada(sala_id, nombre_sala))
+                        elif tipo == "UNIDO_SALA":
+                            sala_id = payload.get("sala_id")
+                            id_jugador = payload.get("id_jugador", 2)
+                            self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
+                        elif tipo == "INICIAR_PARTIDA":
+                            self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
+                        elif tipo == "ACCION_JUEGO":
+                            self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
+                except websockets.exceptions.ConnectionClosed:
+                    print("⚠️ La conexión con el servidor se cerró.")
 
         except Exception as e:
             print(f"⚠️ Error de conexión con el servidor WebSocket: {e}")
