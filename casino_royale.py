@@ -161,6 +161,8 @@ class ClienteCasinoRed:
                             self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
                         elif tipo == "INICIAR_PARTIDA":
                             self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
+                        elif tipo == "NUEVA_RONDA":
+                            self.app.root.after(0, lambda: self.app.aplicar_nueva_ronda_red(payload))
                         elif tipo == "ACCION_JUEGO":
                             self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
                 except websockets.exceptions.ConnectionClosed:
@@ -312,6 +314,7 @@ class CasinoRoyaleApp:
         mesa = datos.get("mesa_inicial", [])
         m_j1 = datos.get("mano_j1", [])
         m_j2 = datos.get("mano_j2", [])
+        self.ronda_actual = datos.get("ronda", 1)
 
         self.modo_juego = 'online'
         self.limpiar_ventana()
@@ -323,6 +326,16 @@ class CasinoRoyaleApp:
         self.turno_jugador = 1
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
+        self.actualizar_vista()
+
+    def aplicar_nueva_ronda_red(self, payload):
+        datos = payload.get("datos", payload)
+        self.ronda_actual = datos.get("ronda", self.ronda_actual)
+        m_j1 = datos.get("mano_j1", [])
+        m_j2 = datos.get("mano_j2", [])
+
+        self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
+        self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
         self.actualizar_vista()
 
     def procesar_accion_remota(self, payload):
@@ -1117,6 +1130,9 @@ class CasinoRoyaleApp:
             self.turno_jugador = 1
             if not self.mano_j1 and not self.mano_j2:
                 self.ronda_actual += 1
+                if self.modo_juego == 'online' and self.cliente_red:
+                    self.cliente_red.enviar_accion("REPARTIR_RONDA", {"ronda": self.ronda_actual})
+                    return
                 if self.ronda_actual <= len(self.distribucion_rondas):
                     self.repartir_ronda()
                     return
