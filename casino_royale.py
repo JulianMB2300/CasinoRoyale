@@ -295,14 +295,20 @@ class CasinoRoyaleApp:
             self.lbl_estado_lobby.config(text=f"Conectándose a la sala {sala_id}...")
 
     def notificar_sala_creada(self, sala_id, nombre_sala):
-        messagebox.showinfo("Sala Creada", f"¡Mesa creada con éxito!\nID de Sala: {sala_id}\nDale este ID a tu amigo para que se una.")
-        self.iniciar_juego('online_activo')
+        messagebox.showinfo("Mesa Creada", f"¡Mesa creada con éxito!\n\nID DE SALA: {sala_id}\n\nComparte este código con tu amigo para jugar.")
+        self.lbl_estado_lobby.config(text=f"🎲 Sala creada: {sala_id}\nEsperando a que se una el segundo jugador...")
 
     def notificar_unido_sala(self, sala_id, id_jugador):
         self.mi_id_jugador = id_jugador
-        self.iniciar_juego('online_activo')
+        self.lbl_estado_lobby.config(text=f"✅ Unificado a la sala {sala_id}. ¡Iniciando partida en breve!")
 
     def iniciar_partida_red(self, payload):
+        # 1. Cambia la pantalla a la mesa de juego
+        self.modo_juego = 'online'
+        self.limpiar_ventana()
+        self.crear_interfaz_juego()
+
+        # 2. Carga los datos recibidos del servidor de Render
         datos = payload.get("datos", {})
         mesa = datos.get("mesa_inicial", [])
         m_j1 = datos.get("mano_j1", [])
@@ -311,7 +317,8 @@ class CasinoRoyaleApp:
         self.mesa = [ElementoMesa([Carta.from_dict(c)], c['nominal']) for c in mesa]
         self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
         self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
-        self.lbl_seleccion.config(text=f"¡Partida lista! Tu rol: Jugador {self.mi_id_jugador}")
+
+        self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
 
     def iniciar_juego(self, modo):
