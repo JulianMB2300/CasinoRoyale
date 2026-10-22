@@ -1129,6 +1129,11 @@ class CasinoRoyaleApp:
         else:
             self.turno_jugador = 1
             if not self.mano_j1 and not self.mano_j2:
+                # Si estamos en la última ronda (6), terminamos el juego directamente
+                if self.ronda_actual >= len(self.distribucion_rondas):
+                    self.finalizar_juego()
+                    return
+
                 self.ronda_actual += 1
                 if self.modo_juego == 'online' and self.cliente_red:
                     self.cliente_red.enviar_accion("REPARTIR_RONDA", {"ronda": self.ronda_actual})
