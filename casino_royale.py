@@ -237,7 +237,7 @@ class CasinoRoyaleApp:
         lbl_titulo = tk.Label(frame_menu, text="♠ CASINO MASTER ♦", font=("Times New Roman", 38, "bold"), bg="#2d0a0a", fg="#d4af37")
         lbl_titulo.pack(pady=10)
 
-        lbl_subsub = tk.Label(frame_menu, text="Tradicón Digital con Supabase & WebSockets", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#00ffcc")
+        lbl_subsub = tk.Label(frame_menu, text="Tradicón Digital con WebSockets", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#00ffcc")
         lbl_subsub.pack(pady=5)
 
         lbl_sub = tk.Label(frame_menu, text="Selecciona el modo de juego", font=("Arial", 14, "bold"), bg="#2d0a0a", fg="#f5b041")
@@ -249,11 +249,11 @@ class CasinoRoyaleApp:
         btn_ia = tk.Button(frame_menu, text="🤖 Jugador vs IA Competitiva", font=("Arial", 13, "bold"), bg="#3d1414", fg="#f5b041", activebackground="#5a1e1e", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('ia'))
         btn_ia.pack(pady=8)
 
-        btn_online = tk.Button(frame_menu, text="🌐 Multijugador Online (Supabase)", font=("Arial", 13, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=self.configurar_online)
+        btn_online = tk.Button(frame_menu, text="🌐 Multijugador Online", font=("Arial", 13, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=self.configurar_online)
         btn_online.pack(pady=8)
 
     def configurar_online(self):
-        username = simpledialog.askstring("Casino Master - Login", "Ingresa tu apodo (Nickname) para registrarte en Supabase:", initialvalue="Julian")
+        username = simpledialog.askstring("Casino Master - Login", "Ingresa tu apodo (Nickname):", initialvalue="Julian")
         if not username:
             return
 
@@ -265,7 +265,7 @@ class CasinoRoyaleApp:
         frame_lobby.pack(expand=True)
 
         tk.Label(frame_lobby, text="🌐 LOBBY DE CASINO MASTER", font=("Times New Roman", 26, "bold"), bg="#2d0a0a", fg="#d4af37").pack(pady=20)
-        self.lbl_estado_lobby = tk.Label(frame_lobby, text="Conectando al servidor central y autenticando en Supabase...", font=("Arial", 13, "italic"), bg="#2d0a0a", fg="#00ffcc")
+        self.lbl_estado_lobby = tk.Label(frame_lobby, text="Conectando al servidor central...", font=("Arial", 13, "italic"), bg="#2d0a0a", fg="#00ffcc")
         self.lbl_estado_lobby.pack(pady=10)
 
         self.btn_crear_sala = tk.Button(frame_lobby, text="🎲 Crear Mesa de Juego", font=("Arial", 12, "bold"), bg="#234e35", fg="#d4af37", state="disabled", command=self.crear_sala_online)
@@ -282,7 +282,7 @@ class CasinoRoyaleApp:
     def notificar_login_exitoso(self, perfil):
         fichas = perfil.get('fichas', 10000)
         username = perfil.get('username', 'Jugador')
-        self.lbl_estado_lobby.config(text=f"✅ ¡Conectado como {username}!\n🪙 Fichas en Supabase: {fichas}")
+        self.lbl_estado_lobby.config(text=f"✅ ¡Conectado como {username}!\n🪙 Fichas: {fichas}")
         self.btn_crear_sala.config(state="normal")
         self.btn_unirse_sala.config(state="normal")
 
@@ -305,10 +305,9 @@ class CasinoRoyaleApp:
 
     def notificar_unido_sala(self, sala_id, id_jugador):
         self.mi_id_jugador = id_jugador
-        self.lbl_estado_lobby.config(text=f"✅ Unificado a la sala {sala_id}. ¡Iniciando partida en breve!")
+        self.lbl_estado_lobby.config(text=f"✅ Unido a la sala {sala_id}. ¡Iniciando partida en breve!")
 
     def iniciar_partida_red(self, payload):
-        # Si payload ya es el diccionario interno o trae "datos", extraemos directamente los mapas
         datos = payload.get("datos", payload)
         mesa = datos.get("mesa_inicial", [])
         m_j1 = datos.get("mano_j1", [])
@@ -321,39 +320,95 @@ class CasinoRoyaleApp:
         self.mesa = [ElementoMesa([Carta.from_dict(c)], c['nominal']) for c in mesa]
         self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
         self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
+        self.turno_jugador = 1
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
 
     def procesar_accion_remota(self, payload):
         tipo_accion = payload.get("tipo_accion")
-        carta_dict = payload.get("carta")
         jugador_id = payload.get("jugador_id")
         
-        if tipo_accion == "LANZAR" and carta_dict:
-            carta = Carta.from_dict(carta_dict)
-            mano_oponente = self.mano_j1 if jugador_id == 1 else self.mano_j2
-            
-            # Remover la carta de la mano del oponente
+        if jugador_id == self.mi_id_jugador:
+            return # Ignorar eco propio
+
+        mano_oponente = self.mano_j1 if jugador_id == 1 else self.mano_j2
+        pozo_oponente = self.pozo_j1 if jugador_id == 1 else self.pozo_j2
+
+        if tipo_accion == "LANZAR":
+            carta = Carta.from_dict(payload.get("carta"))
             for c in list(mano_oponente):
                 if c.nominal == carta.nominal and c.palo == carta.palo:
                     mano_oponente.remove(c)
                     break
-                    
             self.mesa.append(ElementoMesa([carta], carta.nominal))
             self.fusionar_pilas_mesa()
+            self.ultimo_anuncio_captura = f"🃏 {self.obtener_nombre_jugador(jugador_id)} soltó {carta}"
+
+        elif tipo_accion == "SUMAR":
+            carta = Carta.from_dict(payload.get("carta"))
+            indices = payload.get("indices_mesa")
+            nuevo_objetivo = payload.get("nuevo_objetivo")
             
-            # Cambiar el turno al otro jugador
-            self.turno_jugador = 1 if self.turno_jugador == 2 else 2
-            self.actualizar_vista()    
+            for c in list(mano_oponente):
+                if c.nominal == carta.nominal and c.palo == carta.palo:
+                    mano_oponente.remove(c)
+                    break
+            
+            cartas_combinadas = [carta]
+            for idx in sorted(indices, reverse=True):
+                elem = self.mesa.pop(idx)
+                cartas_combinadas.extend(elem.cartas)
+
+            self.mesa.append(ElementoMesa(cartas_combinadas, nuevo_objetivo, bloqueada=False, creador_id=jugador_id))
+            self.fusionar_pilas_mesa()
+            self.ultimo_anuncio_captura = f"➕ {self.obtener_nombre_jugador(jugador_id)} formó {nuevo_objetivo}"
+
+        elif tipo_accion == "FILAR":
+            carta = Carta.from_dict(payload.get("carta"))
+            indices = payload.get("indices_mesa")
+            objetivo_fila = payload.get("objetivo_fila")
+            
+            for c in list(mano_oponente):
+                if c.nominal == carta.nominal and c.palo == carta.palo:
+                    mano_oponente.remove(c)
+                    break
+            
+            cartas_combinadas = [carta]
+            for idx in sorted(indices, reverse=True):
+                elem = self.mesa.pop(idx)
+                cartas_combinadas.extend(elem.cartas)
+
+            self.mesa.append(ElementoMesa(cartas_combinadas, objetivo_fila, bloqueada=True, creador_id=jugador_id))
+            self.fusionar_pilas_mesa()
+            self.ultimo_anuncio_captura = f"🛡️ {self.obtener_nombre_jugador(jugador_id)} formó {objetivo_fila}"
+
+        elif tipo_accion == "CAPTURAR":
+            carta = Carta.from_dict(payload.get("carta"))
+            indices = payload.get("indices_mesa")
+            
+            for c in list(mano_oponente):
+                if c.nominal == carta.nominal and c.palo == carta.palo:
+                    mano_oponente.remove(c)
+                    break
+            
+            cartas_capturadas_total = []
+            for idx in sorted(indices, reverse=True):
+                elem = self.mesa.pop(idx)
+                cartas_capturadas_total.extend(elem.cartas)
+                pozo_oponente.extend(elem.cartas)
+
+            pozo_oponente.append(carta)
+            self.poseedor_llaves = jugador_id
+            self.ultimo_anuncio_captura = self.generar_anuncio_captura(jugador_id, carta, cartas_capturadas_total)
+
+        # Actualizar turno al rival
+        self.turno_jugador = payload.get("nuevo_turno", 1 if self.turno_jugador == 2 else 2)
+        self.actualizar_vista()
 
     def iniciar_juego(self, modo):
-        if modo == 'online_activo':
-            self.modo_juego = 'online'
-        else:
-            self.modo_juego = modo
-            self.mi_id_jugador = 1
-
+        self.modo_juego = modo
+        self.mi_id_jugador = 1
         self.ia_ejecutando = False
         self.limpiar_ventana()
         self.crear_interfaz_juego()
@@ -540,7 +595,6 @@ class CasinoRoyaleApp:
 
         carta_inicial = self.mazo.robar()
         self.mesa.append(ElementoMesa([carta_inicial], carta_inicial.nominal))
-
         self.repartir_ronda()
 
     def repartir_ronda(self):
@@ -552,7 +606,6 @@ class CasinoRoyaleApp:
         self.mano_j1 = [self.mazo.robar() for _ in range(cant)]
         self.mano_j2 = [self.mazo.robar() for _ in range(cant)]
         self.ia_ejecutando = False
-
         self.actualizar_vista()
 
     def mano_posee_respaldo_para_valor(self, mano, valor_objetivo):
@@ -594,6 +647,8 @@ class CasinoRoyaleApp:
     def obtener_nombre_jugador(self, id_j):
         if self.modo_juego == 'ia':
             return "Julian" if id_j == 1 else "La IA"
+        elif self.modo_juego == 'online':
+            return "Julian" if id_j == 1 else "Jugador 2"
         else:
             return "Julian" if id_j == 1 else "Jugador 2"
 
@@ -601,9 +656,7 @@ class CasinoRoyaleApp:
         self.fusionar_pilas_mesa()
         
         id_j_actual = self.turno_jugador
-        
         mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
-        
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
         
         self.lbl_estado.config(
@@ -624,19 +677,26 @@ class CasinoRoyaleApp:
         else:
             self.lbl_seleccion.config(text=f"Turno de {nombre_turno}: Selecciona una carta")
 
+        # Bloquear botones si no es tu turno en modo online / IA
+        bloquear_por_turno = False
+        if self.modo_juego == 'online' and self.turno_jugador != self.mi_id_jugador:
+            bloquear_por_turno = True
+        elif self.modo_juego == 'ia' and self.turno_jugador == 2:
+            bloquear_por_turno = True
+
         es_turno_ia = (self.modo_juego == 'ia' and self.turno_jugador == 2)
 
-        hay_seleccion = (self.carta_seleccionada_temporal is not None) and not es_turno_ia
+        hay_seleccion = (self.carta_seleccionada_temporal is not None) and not bloquear_por_turno
         tiene_pilas = len(self.indices_mesa_seleccionados) > 0
 
         permite_lanzar = False
-        if hay_seleccion:
+        if hay_seleccion and not bloquear_por_turno:
             permite_lanzar = self.es_lanzamiento_permitido(self.carta_seleccionada_temporal, id_j_actual)
 
         pila_en_techo = any(self.mesa[idx].valor_objetivo >= 15 for idx in self.indices_mesa_seleccionados)
-        puede_sumar_o_fila = hay_seleccion and tiene_pilas and not pila_en_techo
+        puede_sumar_o_fila = hay_seleccion and tiene_pilas and not pila_en_techo and not bloquear_por_turno
 
-        self.btn_cajon_captura.config(state="normal" if (hay_seleccion and tiene_pilas) else "disabled")
+        self.btn_cajon_captura.config(state="normal" if (hay_seleccion and tiene_pilas and not bloquear_por_turno) else "disabled")
         self.btn_accion_suma.config(state="normal" if puede_sumar_o_fila else "disabled")
         self.btn_accion_fila.config(state="normal" if puede_sumar_o_fila else "disabled")
         self.btn_accion_lanzar.config(state="normal" if permite_lanzar else "disabled")
@@ -720,6 +780,8 @@ class CasinoRoyaleApp:
                 btn_carta.pack()
 
     def seleccionar_carta_mano(self, carta):
+        if self.modo_juego == 'online' and self.turno_jugador != self.mi_id_jugador:
+            return
         if self.turno_jugador == 2 and self.modo_juego == 'ia':
             return
             
@@ -732,6 +794,8 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def alternar_seleccion_mesa(self, indice_mesa):
+        if self.modo_juego == 'online' and self.turno_jugador != self.mi_id_jugador:
+            return
         if self.turno_jugador == 2 and self.modo_juego == 'ia':
             return
         if not self.carta_seleccionada_temporal:
@@ -758,7 +822,6 @@ class CasinoRoyaleApp:
 
     def generar_anuncio_captura(self, id_jugador, carta_jugada, cartas_capturadas):
         nombre_jugador = self.obtener_nombre_jugador(id_jugador)
-
         brillos = any(c.nominal == 10 and c.palo == 'Diamantes' for c in cartas_capturadas) or (carta_jugada.nominal == 10 and carta_jugada.palo == 'Diamantes')
         duque = any(c.nominal == 2 and c.palo == 'Picas' for c in cartas_capturadas) or (carta_jugada.nominal == 2 and carta_jugada.palo == 'Picas')
         mona = any(c.es_mona for c in cartas_capturadas) or carta_jugada.es_mona
@@ -790,7 +853,8 @@ class CasinoRoyaleApp:
         mano_actual = self.mano_j1 if id_j == 1 else self.mano_j2
 
         cartas_capturadas_total = []
-        for idx in sorted(self.indices_mesa_seleccionados, reverse=True):
+        indices_copia = list(self.indices_mesa_seleccionados)
+        for idx in sorted(indices_copia, reverse=True):
             elem = self.mesa.pop(idx)
             cartas_capturadas_total.extend(elem.cartas)
             pozo_activo.extend(elem.cartas)
@@ -800,6 +864,14 @@ class CasinoRoyaleApp:
         self.poseedor_llaves = id_j
 
         self.ultimo_anuncio_captura = self.generar_anuncio_captura(id_j, carta, cartas_capturadas_total)
+
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("ACCION_JUEGO", {
+                "tipo_accion": "CAPTURAR",
+                "carta": carta.to_dict(),
+                "indices_mesa": indices_copia,
+                "jugador_id": self.mi_id_jugador
+            })
 
         self.siguiente_turno()
 
@@ -834,7 +906,8 @@ class CasinoRoyaleApp:
             return
 
         cartas_combinadas = [carta]
-        for idx in sorted(self.indices_mesa_seleccionados, reverse=True):
+        indices_copia = list(self.indices_mesa_seleccionados)
+        for idx in sorted(indices_copia, reverse=True):
             elem = self.mesa.pop(idx)
             cartas_combinadas.extend(elem.cartas)
 
@@ -844,6 +917,15 @@ class CasinoRoyaleApp:
 
         nombre_j = self.obtener_nombre_jugador(id_j)
         self.ultimo_anuncio_captura = f"➕ {nombre_j} formó {nuevo_objetivo}"
+
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("ACCION_JUEGO", {
+                "tipo_accion": "SUMAR",
+                "carta": carta.to_dict(),
+                "indices_mesa": indices_copia,
+                "nuevo_objetivo": nuevo_objetivo,
+                "jugador_id": self.mi_id_jugador
+            })
 
         self.siguiente_turno()
 
@@ -884,7 +966,8 @@ class CasinoRoyaleApp:
             return
 
         cartas_combinadas = [carta]
-        for idx in sorted(self.indices_mesa_seleccionados, reverse=True):
+        indices_copia = list(self.indices_mesa_seleccionados)
+        for idx in sorted(indices_copia, reverse=True):
             elem = self.mesa.pop(idx)
             cartas_combinadas.extend(elem.cartas)
 
@@ -894,6 +977,15 @@ class CasinoRoyaleApp:
 
         nombre_j = self.obtener_nombre_jugador(id_j)
         self.ultimo_anuncio_captura = f"🛡️ {nombre_j} formó {objetivo_fila}"
+
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("ACCION_JUEGO", {
+                "tipo_accion": "FILAR",
+                "carta": carta.to_dict(),
+                "indices_mesa": indices_copia,
+                "objetivo_fila": objetivo_fila,
+                "jugador_id": self.mi_id_jugador
+            })
 
         self.siguiente_turno()
 
@@ -907,25 +999,6 @@ class CasinoRoyaleApp:
         if not self.es_lanzamiento_permitido(carta, id_j):
             return
 
-        # Si estamos en modo online, enviamos la acción al servidor de Render
-        if self.modo_juego == 'online' and self.cliente_red:
-            self.cliente_red.enviar_accion("ACCION_JUEGO", {
-                "tipo_accion": "LANZAR",
-                "carta": carta.to_dict(),
-                "jugador_id": self.mi_id_jugador
-            })
-            # Actualizamos nuestra pantalla de inmediato
-            mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
-            if carta in mano_actual:
-                mano_actual.remove(carta)
-            self.mesa.append(ElementoMesa([carta], carta.nominal))
-            self.fusionar_pilas_mesa()
-            self.carta_seleccionada_temporal = None
-            self.indices_mesa_seleccionados = []
-            self.actualizar_vista()
-            return
-
-        # Lógica normal para local / IA
         mano_actual = self.mano_j1 if id_j == 1 else self.mano_j2
         if carta in mano_actual:
             mano_actual.remove(carta)
@@ -934,6 +1007,13 @@ class CasinoRoyaleApp:
         
         nombre_j = self.obtener_nombre_jugador(id_j)
         self.ultimo_anuncio_captura = f"🃏 {nombre_j} soltó {carta}"
+
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("ACCION_JUEGO", {
+                "tipo_accion": "LANZAR",
+                "carta": carta.to_dict(),
+                "jugador_id": self.mi_id_jugador
+            })
 
         self.siguiente_turno()
 
@@ -948,7 +1028,6 @@ class CasinoRoyaleApp:
             return
 
         pozo_ia = self.pozo_j2
-
         mejor_opcion = None
         max_puntos_captura = -1
 
@@ -971,7 +1050,6 @@ class CasinoRoyaleApp:
             pozo_ia.append(carta)
             ia_mano.remove(carta)
             self.poseedor_llaves = 2
-            
             self.ultimo_anuncio_captura = self.generar_anuncio_captura(2, carta, cartas_capturadas_total)
             self.siguiente_turno()
             return
@@ -1009,16 +1087,6 @@ class CasinoRoyaleApp:
             self.mesa.append(ElementoMesa([carta_a_lanzar], carta_a_lanzar.nominal))
             self.fusionar_pilas_mesa()
             self.ultimo_anuncio_captura = f"🃏 La IA soltó {carta_a_lanzar}"
-            self.siguiente_turno()
-            return
-
-        indices_retirar = [idx for idx, elem in enumerate(self.mesa) if elem.creador_id == 2]
-        if indices_retirar:
-            for idx in sorted(indices_retirar, reverse=True):
-                e = self.mesa.pop(idx)
-                pozo_ia.extend(e.cartas)
-            self.poseedor_llaves = 2
-            self.ultimo_anuncio_captura = "⚠️ La IA retiró sus filas al pozo"
             self.siguiente_turno()
             return
 
