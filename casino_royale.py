@@ -303,16 +303,15 @@ class CasinoRoyaleApp:
         self.lbl_estado_lobby.config(text=f"✅ Unificado a la sala {sala_id}. ¡Iniciando partida en breve!")
 
     def iniciar_partida_red(self, payload):
-        # 1. Cambia la pantalla a la mesa de juego
-        self.modo_juego = 'online'
-        self.limpiar_ventana()
-        self.crear_interfaz_juego()
-
-        # 2. Carga los datos recibidos del servidor de Render
-        datos = payload.get("datos", {})
+        # Si payload ya es el diccionario interno o trae "datos", extraemos directamente los mapas
+        datos = payload.get("datos", payload)
         mesa = datos.get("mesa_inicial", [])
         m_j1 = datos.get("mano_j1", [])
         m_j2 = datos.get("mano_j2", [])
+
+        self.modo_juego = 'online'
+        self.limpiar_ventana()
+        self.crear_interfaz_juego()
 
         self.mesa = [ElementoMesa([Carta.from_dict(c)], c['nominal']) for c in mesa]
         self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
