@@ -1,4 +1,5 @@
 import asyncio
+import os
 import json
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -114,4 +115,5 @@ async def websocket_endpoint(websocket: WebSocket):
             del salas[sala_actual]
 
 if __name__ == "__main__":
-    uvicorn.run("servidor_casino:app", host="0.0.0.0", port=8080, reload=True)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("servidor_casino:app", host="0.0.0.0", port=port)

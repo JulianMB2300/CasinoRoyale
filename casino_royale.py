@@ -115,7 +115,7 @@ class Mazo:
 class ClienteCasinoRed:
     def __init__(self, app_ref, host=None, puerto=None):
         self.app = app_ref
-        self.uri = "wss://casino-master-wiah.onrender.com"
+        self.uri = "wss://casino-master-wiah.onrender.com/ws"
         self.websocket = None
         self.loop = None
         self.hilo = None
