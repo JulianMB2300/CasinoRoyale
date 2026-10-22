@@ -98,13 +98,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif tipo == "ACCION_JUEGO":
                     if sala_actual and sala_actual in salas:
                         s = salas[sala_actual]
-                        # Reenviar la acción a TODOS los jugadores de la sala para mantener sincronización perfecta
-                        for cliente_ws in [s["jugador1"], s["jugador2"]]:
-                            if cliente_ws:
-                                await cliente_ws.send_text(json.dumps({
-                                    "tipo": "ACCION_JUEGO",
-                                    "datos": datos
-                                }))
+                        # Reenviar la acción ÚNICAMENTE al otro jugador de la sala
+                        otro_jugador = s["jugador2"] if websocket == s["jugador1"] else s["jugador1"]
+                        if otro_jugador:
+                            await otro_jugador.send_text(json.dumps({
+                                "tipo": "ACCION_JUEGO",
+                                "datos": datos
+                            }))
 
             except json.JSONDecodeError:
                 pass
