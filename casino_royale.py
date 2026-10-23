@@ -327,7 +327,7 @@ class CasinoRoyaleApp:
         self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
         self.pozo_j1 = []
         self.pozo_j2 = []
-        self.turno_jugador = 1
+        self.turno_jugador = self.turno_inicial_partida
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
@@ -427,6 +427,7 @@ class CasinoRoyaleApp:
         self.modo_juego = modo
         self.mi_id_jugador = 1
         self.ia_ejecutando = False
+        self.turno_inicial_partida = 1  # Empieza Jugador 1
         self.limpiar_ventana()
         self.crear_interfaz_juego()
 
@@ -601,6 +602,7 @@ class CasinoRoyaleApp:
         self.pozo_j2 = []
         self.mesa = []
         
+        # Alternar turno inicial en cada revancha (J1 -> J2 -> J1 ...)
         self.turno_jugador = self.turno_inicial_partida
         self.turno_inicial_partida = 2 if self.turno_inicial_partida == 1 else 1
 
@@ -825,11 +827,6 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
-        """
-        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
-        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
-        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
-        """
         if not elementos_seleccionados:
             return False
 
@@ -1180,14 +1177,10 @@ class CasinoRoyaleApp:
         self.finalizar_juego()
 
     def solicitar_revancha(self):
-        # 1. Limpiamos la pantalla de resultados anterior
         self.limpiar_ventana()
-        # 2. Recreamos la interfaz de juego limpia
         self.crear_interfaz_juego()
-        # 3. Enviamos la señal al servidor si estamos online
         if self.modo_juego == 'online' and self.cliente_red:
             self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
-        # 4. Arrancamos la nueva partida
         self.iniciar_nueva_partida()
 
     def finalizar_juego(self):
