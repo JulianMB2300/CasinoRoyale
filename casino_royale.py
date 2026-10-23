@@ -1180,11 +1180,14 @@ class CasinoRoyaleApp:
         self.finalizar_juego()
 
     def solicitar_revancha(self):
-        # En modo online o local, forzamos el reinicio limpio de la partida de inmediato
+        # 1. Recrear la interfaz de juego para que los widgets (como lbl_estado) vuelvan a existir
+        self.crear_interfaz_juego()
+        # 2. Enviar señal al servidor si estamos online
         if self.modo_juego == 'online' and self.cliente_red:
             self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
+        # 3. Arrancar la nueva partida de inmediato
         self.iniciar_nueva_partida()
-    
+        
     def finalizar_juego(self):
         if self.mesa:
             pozo_ganador = self.pozo_j1 if self.poseedor_llaves == 1 else self.pozo_j2
