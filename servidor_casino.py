@@ -68,6 +68,11 @@ async def iniciar_partida(sala, revancha=False):
         "turno_inicial": sala["turno"],
         "primer_jugador": sala["primer_jugador"],
         "revancha": revancha,
+        # Enviar los nombres reales a ambos clientes.
+        "nombres_jugadores": {
+            "1": sala["nombres"].get(1) or "Jugador 1",
+            "2": sala["nombres"].get(2) or "Jugador 2",
+        },
     }
     await enviar_a_jugadores(sala, "INICIAR_PARTIDA", payload)
 
@@ -101,6 +106,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(mensaje("LOGIN_EXITOSO", {"perfil": perfil}))
 
             elif tipo == "CREAR_SALA":
+                # Aceptar el nombre enviado en este mensaje o conservar el del LOGIN.
+                username = str(datos.get("username") or username).strip() or "Jugador"
                 # Evitar colisiones de ID de sala.
                 sala_id = f"sala_{random.randint(1000, 9999)}"
                 while sala_id in salas:
@@ -128,6 +135,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif tipo == "UNIR_SALA":
+                # Aceptar el nombre enviado en este mensaje o conservar el del LOGIN.
+                username = str(datos.get("username") or username).strip() or "Jugador"
                 sala_id = datos.get("sala_id")
                 sala = salas.get(sala_id)
                 if sala and sala["jugador2"] is None and sala["jugador1"] is not websocket:

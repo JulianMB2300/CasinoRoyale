@@ -200,14 +200,12 @@ class CasinoRoyaleApp:
         self.modo_juego = None  
         self.cliente_red = None
         self.mi_id_jugador = 1  
+        self.nombre_usuario = "Jugador"
+        self.nombres_jugadores = {1: "Jugador 1", 2: "Jugador 2"}
         self.ia_ejecutando = False
         self.mazo = Mazo()
         self.ronda_actual = 1
         self.distribucion_rondas = [5, 4, 4, 4, 4, 5]
-
-        # Nombres dinámicos de los jugadores
-        self.nombre_j1 = "Julian"
-        self.nombre_j2 = "Jugador 2"
 
         self.turno_jugador = 1
         self.turno_inicial_partida = 1
@@ -265,9 +263,15 @@ class CasinoRoyaleApp:
         if not username:
             return
 
+        username = username.strip()
+        if not username:
+            return
+
+        self.nombre_usuario = username
+        self.nombres_jugadores[self.mi_id_jugador] = username
         self.modo_juego = 'online'
         self.mi_id_jugador = 1
-        self.nombre_j1 = username  # Guardar apodo local por defecto
+        self.nombres_jugadores[1] = username
         self.limpiar_ventana()
 
         frame_lobby = tk.Frame(self.root, bg="#2d0a0a")
@@ -291,28 +295,23 @@ class CasinoRoyaleApp:
     def notificar_login_exitoso(self, perfil):
         fichas = perfil.get('fichas', 10000)
         username = perfil.get('username', 'Jugador')
-        
-        # Asignar apodo dinámico según la asignación del jugador
-        if self.mi_id_jugador == 1:
-            self.nombre_j1 = username
-        else:
-            self.nombre_j2 = username
-
-        self.lbl_estado_lobby.config(text=f"✅ ¡Conectado como {username}!\n🪙 Fichas: {fichas}")
+        self.nombre_usuario = str(username).strip() or self.nombre_usuario
+        self.nombres_jugadores[self.mi_id_jugador] = self.nombre_usuario
+        self.lbl_estado_lobby.config(text=f"✅ ¡Conectado como {self.nombre_usuario}!\n🪙 Fichas: {fichas}")
         self.btn_crear_sala.config(state="normal")
         self.btn_unirse_sala.config(state="normal")
 
     def crear_sala_online(self):
         if self.cliente_red:
             self.mi_id_jugador = 1
-            self.cliente_red.enviar_accion("CREAR_SALA", {})
+            self.cliente_red.enviar_accion("CREAR_SALA", {"username": self.nombre_usuario})
             self.lbl_estado_lobby.config(text="🎲 Creando sala en el servidor...")
 
     def unirse_a_sala_prompt(self):
         sala_id = simpledialog.askstring("Unirse a Mesa", "Ingresa el ID de la sala (ej. sala_1234):")
         if sala_id and self.cliente_red:
             self.mi_id_jugador = 2
-            self.cliente_red.enviar_accion("UNIR_SALA", {"sala_id": sala_id})
+            self.cliente_red.enviar_accion("UNIR_SALA", {"sala_id": sala_id, "username": self.nombre_usuario})
             self.lbl_estado_lobby.config(text=f"Conectándose a la sala {sala_id}...")
 
     def notificar_sala_creada(self, sala_id, nombre_sala):
@@ -325,14 +324,35 @@ class CasinoRoyaleApp:
 
     def iniciar_partida_red(self, payload):
         datos = payload.get("datos", payload)
+
+        # Los nombres deben venir del servidor para que ambos clientes
+        # vean los apodos reales de los dos jugadores.
+        nombres = datos.get("nombres_jugadores", {})
+        if isinstance(nombres, dict):
+            for clave, valor in nombres.items():
+                try:
+                    id_nombre = int(clave)
+                except (TypeError, ValueError):
+                    continue
+                if id_nombre in (1, 2) and valor:
+                    self.nombres_jugadores[id_nombre] = str(valor)
+
+        nombre_j1 = datos.get("nombre_j1") or datos.get("jugador1_nombre")
+        nombre_j2 = datos.get("nombre_j2") or datos.get("jugador2_nombre")
+        if nombre_j1:
+            self.nombres_jugadores[1] = str(nombre_j1)
+        if nombre_j2:
+            self.nombres_jugadores[2] = str(nombre_j2)
+
+        # El nombre propio ingresado en el login es una alternativa segura
+        # si el servidor todavía no envía el nombre de ese puesto.
+        if self.mi_id_jugador in (1, 2):
+            self.nombres_jugadores[self.mi_id_jugador] = self.nombre_usuario
+
         mesa = datos.get("mesa_inicial", [])
         m_j1 = datos.get("mano_j1", [])
         m_j2 = datos.get("mano_j2", [])
         self.ronda_actual = datos.get("ronda", 1)
-
-        # Leer apodos de los jugadores si vienen en el payload del servidor
-        self.nombre_j1 = datos.get("nombre_j1", self.nombre_j1)
-        self.nombre_j2 = datos.get("nombre_j2", self.nombre_j2)
 
         self.modo_juego = 'online'
         self.limpiar_ventana()
@@ -346,6 +366,8 @@ class CasinoRoyaleApp:
         self.poseedor_llaves = 1
         self.ultimo_anuncio_captura = "♠ ¡Partida iniciada! ♦"
 
+        # El servidor puede indicar quién abre la partida. Si no lo hace,
+        # alternamos entre 1 y 2 en cada revancha en ambos clientes.
         turno_inicial = datos.get("turno_inicial", datos.get("turno_jugador"))
         if turno_inicial not in (1, 2):
             turno_inicial = self.turno_inicial_partida
@@ -355,8 +377,7 @@ class CasinoRoyaleApp:
         self.indices_mesa_seleccionados = []
         self.ia_ejecutando = False
 
-        mi_apodo = self.nombre_j1 if self.mi_id_jugador == 1 else self.nombre_j2
-        self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres {mi_apodo} (Jugador {self.mi_id_jugador})")
+        self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
 
     def aplicar_nueva_ronda_red(self, payload):
@@ -470,7 +491,7 @@ class CasinoRoyaleApp:
 
     def obtener_imagen_carta(self, carta, ancho=80, alto=112):
         if getattr(sys, 'frozen', False):
-            base_dir = sys._MEIPASS
+            base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
@@ -696,9 +717,13 @@ class CasinoRoyaleApp:
 
     def obtener_nombre_jugador(self, id_j):
         if self.modo_juego == 'ia':
-            return self.nombre_j1 if id_j == 1 else "La IA"
-        else:
-            return self.nombre_j1 if id_j == 1 else self.nombre_j2
+            return "Julian" if id_j == 1 else "La IA"
+        if self.modo_juego == 'online':
+            nombre = self.nombres_jugadores.get(id_j)
+            if nombre:
+                return nombre
+            return f"Jugador {id_j}"
+        return "Julian" if id_j == 1 else "Jugador 2"
 
     def actualizar_vista(self):
         self.fusionar_pilas_mesa()
@@ -856,19 +881,32 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
+        """
+        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
+        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
+        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
+        """
         if not elementos_seleccionados:
             return False
 
+        # Si solo seleccionó una pila/elemento de la mesa
         if len(elementos_seleccionados) == 1:
             return elementos_seleccionados[0].valor_objetivo == objetivo
 
+        # Si seleccionó múltiples elementos de la mesa:
+        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
         if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
             return True
 
+        # Caso B: Suma de elementos sueltos.
+        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
+        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
                 return False
 
+        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
+        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
         valores = [elem.valor_objetivo for elem in elementos_seleccionados]
         
         def verificar_subgrupos(lista_val, obj):
@@ -910,6 +948,7 @@ class CasinoRoyaleApp:
         
         val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
+        # Validación estricta que impide fusionar formaciones fijas con cartas externas
         if not self.es_particion_valida_captura(elementos_sel, val_carta):
             return
 
@@ -1176,8 +1215,13 @@ class CasinoRoyaleApp:
         self.carta_seleccionada_temporal = None
         self.indices_mesa_seleccionados = []
 
+        # Cambiar al otro jugador antes de comprobar si terminó la ronda.
         self.turno_jugador = 2 if self.turno_jugador == 1 else 1
 
+        # Importante: comprobar las manos después de CADA jugada. Si el primer
+        # jugador de la ronda alternó por la revancha, el último movimiento puede
+        # corresponder al Jugador 1; la comprobación anterior solo funcionaba
+        # correctamente cuando el último movimiento era del Jugador 2.
         if not self.mano_j1 and not self.mano_j2:
             if self.ronda_actual >= len(self.distribucion_rondas):
                 if self.modo_juego == 'online' and self.cliente_red:
@@ -1187,6 +1231,7 @@ class CasinoRoyaleApp:
 
             self.ronda_actual += 1
             if self.modo_juego == 'online' and self.cliente_red:
+                # El servidor reparte y notifica NUEVA_RONDA a ambos clientes.
                 self.cliente_red.enviar_accion("REPARTIR_RONDA", {"ronda": self.ronda_actual})
                 return
 
@@ -1237,11 +1282,10 @@ class CasinoRoyaleApp:
         total_j1 = brillos_j1 + duque_j1 + ases_j1 + mona_j1 + pts_cartas_j1 + pts_picas_j1
         total_j2 = brillos_j2 + duque_j2 + ases_j2 + mona_j2 + pts_cartas_j2 + pts_picas_j2
 
-        nombre_j1 = self.nombre_j1
-        nombre_j2 = self.nombre_j2 if self.modo_juego in ['1v1', 'online'] else "IA Competitiva"
+        nombre_j2 = "Jugador 2" if self.modo_juego in ['1v1', 'online'] else "IA Competitiva"
         
         if total_j1 > total_j2:
-            ganador_txt = f"¡{nombre_j1.upper()} GANA LA PARTIDA!"
+            ganador_txt = "¡JULIAN GANA LA PARTIDA!"
             color_ganador = "#2ecc71"
         elif total_j2 > total_j1:
             ganador_txt = f"¡{nombre_j2.upper()} GANA LA PARTIDA!"
@@ -1264,7 +1308,7 @@ class CasinoRoyaleApp:
         frame_tarjetas = tk.Frame(frame_resultado, bg="#2d0a0a")
         frame_tarjetas.pack(expand=True, fill="both", pady=10)
 
-        frame_j1 = tk.LabelFrame(frame_tarjetas, text=f" 🔵 {nombre_j1.upper()}: Total [ {total_j1} PTS ] ", font=("Times New Roman", 14, "bold"), bg="#4a1212", fg="#d4af37", bd=3, relief="groove")
+        frame_j1 = tk.LabelFrame(frame_tarjetas, text=" 🔵 JULIAN: Total [ " + str(total_j1) + " PTS ] ", font=("Times New Roman", 14, "bold"), bg="#4a1212", fg="#d4af37", bd=3, relief="groove")
         frame_j1.pack(side="left", expand=True, fill="both", padx=15, pady=10)
 
         txt_j1 = (
@@ -1290,7 +1334,7 @@ class CasinoRoyaleApp:
         )
         tk.Label(frame_j2, text=txt_j2, font=("Arial", 12), bg="#4a1212", fg="white", justify="left").pack(padx=20, pady=20, anchor="w")
 
-        lbl_llaves = tk.Label(frame_resultado, text=f"🔑 Llaves finales ganadas por: {nombre_j1 if self.poseedor_llaves == 1 else nombre_j2}", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#f5b041")
+        lbl_llaves = tk.Label(frame_resultado, text=f"🔑 Llaves finales ganadas por: {'Julian' if self.poseedor_llaves == 1 else nombre_j2}", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#f5b041")
         lbl_llaves.pack(pady=10)
 
         frame_botones_fin = tk.Frame(frame_resultado, bg="#2d0a0a")
