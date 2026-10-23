@@ -167,8 +167,6 @@ class ClienteCasinoRed:
                             self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
                         elif tipo == "FINALIZAR_PARTIDA":
                             self.app.root.after(0, lambda: self.app.finalizar_juego_red())
-                        elif tipo == "REVANCHA_ACEPTADA":
-                            self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
                 except websockets.exceptions.ConnectionClosed:
                     print("⚠️ La conexión con el servidor se cerró.")
 
@@ -827,6 +825,11 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
+        """
+        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
+        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
+        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
+        """
         if not elementos_seleccionados:
             return False
 
@@ -1177,12 +1180,8 @@ class CasinoRoyaleApp:
         self.finalizar_juego()
 
     def solicitar_revancha(self):
-        if self.modo_juego == 'online' and self.cliente_red:
-            self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
-            if hasattr(self, 'btn_revancha') and self.btn_revancha.winfo_exists():
-                self.btn_revancha.config(text="⏳ Esperando al rival...", state="disabled", bg="#3d3d14")
-        else:
-            self.iniciar_nueva_partida()
+        # Solución directa y autónoma: al hacer clic en revancha, se inicia la nueva partida inmediatamente
+        self.iniciar_nueva_partida()
 
     def finalizar_juego(self):
         if self.mesa:
@@ -1272,9 +1271,7 @@ class CasinoRoyaleApp:
         frame_botones_fin = tk.Frame(frame_resultado, bg="#2d0a0a")
         frame_botones_fin.pack(pady=15)
 
-        self.btn_revancha = tk.Button(frame_botones_fin, text="🔄 Revancha", font=("Arial", 14, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", bd=3, relief="raised", command=self.solicitar_revancha)
-        self.btn_revancha.pack(side="left", padx=10, ipady=6, ipadx=15)
-        
+        tk.Button(frame_botones_fin, text="🔄 Revancha", font=("Arial", 14, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", bd=3, relief="raised", command=self.solicitar_revancha).pack(side="left", padx=10, ipady=6, ipadx=15)
         tk.Button(frame_botones_fin, text="🏠 Menú Principal", font=("Arial", 14, "bold"), bg="#4a1212", fg="white", activebackground="#641e1e", bd=3, relief="raised", command=self.mostrar_pantalla_inicio).pack(side="right", padx=10, ipady=6, ipadx=15)
 
 if __name__ == "__main__":
