@@ -694,7 +694,6 @@ class CasinoRoyaleApp:
         else:
             self.lbl_seleccion.config(text=f"Turno de {nombre_turno}: Selecciona una carta")
 
-        # Bloquear botones si no es tu turno en modo online / IA
         bloquear_por_turno = False
         if self.modo_juego == 'online' and self.turno_jugador != self.mi_id_jugador:
             bloquear_por_turno = True
@@ -825,17 +824,48 @@ class CasinoRoyaleApp:
         
         self.actualizar_vista()
 
-    def es_particion_valida_captura(self, valores, objetivo):
-        if not valores:
+    def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
+        """
+        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
+        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
+        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
+        """
+        if not elementos_seleccionados:
+            return False
+
+        # Si solo seleccionó una pila/elemento de la mesa
+        if len(elementos_seleccionados) == 1:
+            return elementos_seleccionados[0].valor_objetivo == objetivo
+
+        # Si seleccionó múltiples elementos de la mesa:
+        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
+        if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
             return True
-        n = len(valores)
-        for i in range(1, 1 << n):
-            subconjunto = [valores[j] for j in range(n) if (i & (1 << j))]
-            if sum(subconjunto) == objetivo:
-                restantes = [valores[j] for j in range(n) if not (i & (1 << j))]
-                if self.es_particion_valida_captura(restantes, objetivo):
-                    return True
-        return False
+
+        # Caso B: Suma de elementos sueltos.
+        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
+        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
+        for elem in elementos_seleccionados:
+            if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
+                return False
+
+        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
+        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
+        valores = [elem.valor_objetivo for elem in elementos_seleccionados]
+        
+        def verificar_subgrupos(lista_val, obj):
+            if not lista_val:
+                return True
+            n = len(lista_val)
+            for i in range(1, 1 << n):
+                subconjunto = [lista_val[j] for j in range(n) if (i & (1 << j))]
+                if sum(subconjunto) == obj:
+                    restantes = [lista_val[j] for j in range(n) if not (i & (1 << j))]
+                    if verificar_subgrupos(restantes, obj):
+                        return True
+            return False
+
+        return verificar_subgrupos(valores, objetivo)
 
     def generar_anuncio_captura(self, id_jugador, carta_jugada, cartas_capturadas):
         nombre_jugador = self.obtener_nombre_jugador(id_jugador)
@@ -857,21 +887,13 @@ class CasinoRoyaleApp:
             return
 
         carta = self.carta_seleccionada_temporal
-        valores_seleccionados = [self.mesa[i].valor_objetivo for i in self.indices_mesa_seleccionados]
+        elementos_sel = [self.mesa[i] for i in self.indices_mesa_seleccionados]
+        suma_total = sum(elem.valor_objetivo for elem in elementos_sel)
         
-        suma_total = sum(valores_seleccionados)
         val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
-        # REGLA ANTI-TRAMPA CORREGIDA:
-        # Permite capturar múltiples elementos de la mesa si coinciden individualmente con el valor (ej. barrida)
-        # o si suman juntos el valor exacto de la carta jugada (ej. Mona de 15 capturando 10 + 5).
-        if len(self.indices_mesa_seleccionados) > 1:
-            mismo_valor = all(self.mesa[idx].valor_objetivo == val_carta for idx in self.indices_mesa_seleccionados)
-            suma_coincide = (suma_total == val_carta)
-            if not (mismo_valor or suma_coincide):
-                return
-
-        if not self.es_particion_valida_captura(valores_seleccionados, val_carta):
+        # Validación estricta que impide fusionar formaciones fijas con cartas externas
+        if not self.es_particion_valida_captura(elementos_sel, val_carta):
             return
 
         id_j = self.turno_jugador
@@ -1127,8 +1149,8 @@ class CasinoRoyaleApp:
         n = len(self.mesa)
         for i in range(1, 1 << n):
             sub_indices = [j for j in range(n) if (i & (1 << j))]
-            valores_sub = [self.mesa[idx].valor_objetivo for idx in sub_indices]
-            if self.es_particion_valida_captura(valores_sub, objetivo):
+            elementos_sub = [self.mesa[idx] for idx in sub_indices]
+            if self.es_particion_valida_captura(elementos_sub, objetivo):
                 return sub_indices
         return None
 
@@ -1258,7 +1280,6 @@ class CasinoRoyaleApp:
         lbl_llaves = tk.Label(frame_resultado, text=f"🔑 Llaves finales ganadas por: {'Julian' if self.poseedor_llaves == 1 else nombre_j2}", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#f5b041")
         lbl_llaves.pack(pady=10)
 
-        # Botones de navegación al finalizar la partida
         frame_botones_fin = tk.Frame(frame_resultado, bg="#2d0a0a")
         frame_botones_fin.pack(pady=15)
 
