@@ -167,6 +167,8 @@ class ClienteCasinoRed:
                             self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
                         elif tipo == "FINALIZAR_PARTIDA":
                             self.app.root.after(0, lambda: self.app.finalizar_juego_red())
+                        elif tipo == "REVANCHA_ACEPTADA":
+                            self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
                 except websockets.exceptions.ConnectionClosed:
                     print("⚠️ La conexión con el servidor se cerró.")
 
@@ -328,6 +330,7 @@ class CasinoRoyaleApp:
         self.pozo_j1 = []
         self.pozo_j2 = []
         self.turno_jugador = 1
+        self.ultimo_anuncio_captura = "♠ ¡Nueva partida/Revanchas iniciada! ♦"
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
@@ -825,32 +828,19 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
-        """
-        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
-        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
-        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
-        """
         if not elementos_seleccionados:
             return False
 
-        # Si solo seleccionó una pila/elemento de la mesa
         if len(elementos_seleccionados) == 1:
             return elementos_seleccionados[0].valor_objetivo == objetivo
 
-        # Si seleccionó múltiples elementos de la mesa:
-        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
         if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
             return True
 
-        # Caso B: Suma de elementos sueltos.
-        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
-        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
                 return False
 
-        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
-        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
         valores = [elem.valor_objetivo for elem in elementos_seleccionados]
         
         def verificar_subgrupos(lista_val, obj):
@@ -892,7 +882,6 @@ class CasinoRoyaleApp:
         
         val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
-        # Validación estricta que impide fusionar formaciones fijas con cartas externas
         if not self.es_particion_valida_captura(elementos_sel, val_carta):
             return
 
@@ -1191,7 +1180,8 @@ class CasinoRoyaleApp:
     def solicitar_revancha(self):
         if self.modo_juego == 'online' and self.cliente_red:
             self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
-            messagebox.showinfo("Revancha", "Solicitud de revancha enviada.")
+            if hasattr(self, 'btn_revancha') and self.btn_revancha.winfo_exists():
+                self.btn_revancha.config(text="⏳ Esperando al rival...", state="disabled", bg="#3d3d14")
         else:
             self.iniciar_nueva_partida()
 
@@ -1283,7 +1273,9 @@ class CasinoRoyaleApp:
         frame_botones_fin = tk.Frame(frame_resultado, bg="#2d0a0a")
         frame_botones_fin.pack(pady=15)
 
-        tk.Button(frame_botones_fin, text="🔄 Revancha", font=("Arial", 14, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", bd=3, relief="raised", command=self.solicitar_revancha).pack(side="left", padx=10, ipady=6, ipadx=15)
+        self.btn_revancha = tk.Button(frame_botones_fin, text="🔄 Revancha", font=("Arial", 14, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", bd=3, relief="raised", command=self.solicitar_revancha)
+        self.btn_revancha.pack(side="left", padx=10, ipady=6, ipadx=15)
+        
         tk.Button(frame_botones_fin, text="🏠 Menú Principal", font=("Arial", 14, "bold"), bg="#4a1212", fg="white", activebackground="#641e1e", bd=3, relief="raised", command=self.mostrar_pantalla_inicio).pack(side="right", padx=10, ipady=6, ipadx=15)
 
 if __name__ == "__main__":
