@@ -1180,9 +1180,9 @@ class CasinoRoyaleApp:
         self.finalizar_juego()
 
     def solicitar_revancha(self):
-        # Solución directa y autónoma: al hacer clic en revancha, se inicia la nueva partida inmediatamente
+        # Forzar reinicio local inmediato sin depender del servidor web para evitar bloqueos
         self.iniciar_nueva_partida()
-
+    
     def finalizar_juego(self):
         if self.mesa:
             pozo_ganador = self.pozo_j1 if self.poseedor_llaves == 1 else self.pozo_j2
