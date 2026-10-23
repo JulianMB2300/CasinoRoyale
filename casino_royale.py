@@ -330,7 +330,6 @@ class CasinoRoyaleApp:
         self.pozo_j1 = []
         self.pozo_j2 = []
         self.turno_jugador = 1
-        self.ultimo_anuncio_captura = "♠ ¡Nueva partida/Revanchas iniciada! ♦"
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
         self.actualizar_vista()
