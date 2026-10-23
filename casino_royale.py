@@ -419,7 +419,7 @@ class CasinoRoyaleApp:
             self.poseedor_llaves = jugador_id
             self.ultimo_anuncio_captura = self.generar_anuncio_captura(jugador_id, carta, cartas_capturadas_total)
 
-        # Actualizar turno al rival
+        # Actualizar turno al rival exactamente como manda la red
         self.turno_jugador = payload.get("nuevo_turno", 1 if self.turno_jugador == 2 else 2)
         self.actualizar_vista()
 
@@ -427,7 +427,7 @@ class CasinoRoyaleApp:
         self.modo_juego = modo
         self.mi_id_jugador = 1
         self.ia_ejecutando = False
-        self.turno_inicial_partida = 1  # Empieza Jugador 1
+        self.turno_inicial_partida = 1
         self.limpiar_ventana()
         self.crear_interfaz_juego()
 
@@ -902,11 +902,13 @@ class CasinoRoyaleApp:
         self.ultimo_anuncio_captura = self.generar_anuncio_captura(id_j, carta, cartas_capturadas_total)
 
         if self.modo_juego == 'online' and self.cliente_red:
+            nuevo_turno = 2 if self.turno_jugador == 1 else 1
             self.cliente_red.enviar_accion("ACCION_JUEGO", {
                 "tipo_accion": "CAPTURAR",
                 "carta": carta.to_dict(),
                 "indices_mesa": indices_copia,
-                "jugador_id": self.mi_id_jugador
+                "jugador_id": self.mi_id_jugador,
+                "nuevo_turno": nuevo_turno
             })
 
         self.siguiente_turno()
@@ -955,12 +957,14 @@ class CasinoRoyaleApp:
         self.ultimo_anuncio_captura = f"➕ {nombre_j} formó {nuevo_objetivo}"
 
         if self.modo_juego == 'online' and self.cliente_red:
+            nuevo_turno = 2 if self.turno_jugador == 1 else 1
             self.cliente_red.enviar_accion("ACCION_JUEGO", {
                 "tipo_accion": "SUMAR",
                 "carta": carta.to_dict(),
                 "indices_mesa": indices_copia,
                 "nuevo_objetivo": nuevo_objetivo,
-                "jugador_id": self.mi_id_jugador
+                "jugador_id": self.mi_id_jugador,
+                "nuevo_turno": nuevo_turno
             })
 
         self.siguiente_turno()
@@ -1015,12 +1019,14 @@ class CasinoRoyaleApp:
         self.ultimo_anuncio_captura = f"🛡️ {nombre_j} formó {objetivo_fila}"
 
         if self.modo_juego == 'online' and self.cliente_red:
+            nuevo_turno = 2 if self.turno_jugador == 1 else 1
             self.cliente_red.enviar_accion("ACCION_JUEGO", {
                 "tipo_accion": "FILAR",
                 "carta": carta.to_dict(),
                 "indices_mesa": indices_copia,
                 "objetivo_fila": objetivo_fila,
-                "jugador_id": self.mi_id_jugador
+                "jugador_id": self.mi_id_jugador,
+                "nuevo_turno": nuevo_turno
             })
 
         self.siguiente_turno()
@@ -1045,136 +1051,35 @@ class CasinoRoyaleApp:
         self.ultimo_anuncio_captura = f"🃏 {nombre_j} soltó {carta}"
 
         if self.modo_juego == 'online' and self.cliente_red:
+            nuevo_turno = 2 if self.turno_jugador == 1 else 1
             self.cliente_red.enviar_accion("ACCION_JUEGO", {
                 "tipo_accion": "LANZAR",
                 "carta": carta.to_dict(),
-                "jugador_id": self.mi_id_jugador
+                "jugador_id": self.mi_id_jugador,
+                "nuevo_turno": nuevo_turno
             })
 
         self.siguiente_turno()
-
-    def ejecutar_turno_ia(self):
-        self.ia_ejecutando = False
-        if self.ronda_actual > len(self.distribucion_rondas):
-            return
-
-        ia_mano = self.mano_j2
-        if not ia_mano:
-            self.siguiente_turno()
-            return
-
-        pozo_ia = self.pozo_j2
-        mejor_opcion = None
-        max_puntos_captura = -1
-
-        for carta in ia_mano:
-            val_comparar = 14 if (carta.nominal == 1) else (15 if carta.es_mona else carta.nominal)
-            indices_captura = self.encontrar_mejor_combinacion_captura(val_comparar)
-            if indices_captura is not None:
-                puntos_pilas = sum(c.puntos for idx in indices_captura for c in self.mesa[idx].cartas) + carta.puntos
-                if puntos_pilas > max_puntos_captura:
-                    max_puntos_captura = puntos_pilas
-                    mejor_opcion = (carta, indices_captura)
-
-        if mejor_opcion is not None:
-            carta, indices_captura = mejor_opcion
-            cartas_capturadas_total = []
-            for idx in sorted(indices_captura, reverse=True):
-                elem = self.mesa.pop(idx)
-                cartas_capturadas_total.extend(elem.cartas)
-                pozo_ia.extend(elem.cartas)
-            pozo_ia.append(carta)
-            ia_mano.remove(carta)
-            self.poseedor_llaves = 2
-            self.ultimo_anuncio_captura = self.generar_anuncio_captura(2, carta, cartas_capturadas_total)
-            self.siguiente_turno()
-            return
-
-        for carta in ia_mano:
-            if carta.es_mona or carta.nominal == 1:
-                continue
-            for idx, elem in enumerate(self.mesa):
-                if not elem.bloqueada and elem.valor_objetivo < 15:
-                    nuevo_objetivo = elem.valor_objetivo + carta.nominal
-                    if nuevo_objetivo <= 15:
-                        mano_restante = [c for c in ia_mano if c != carta]
-                        tiene_respaldo = any(
-                            c.nominal == nuevo_objetivo or 
-                            (nuevo_objetivo == 14 and c.nominal == 1) or 
-                            (nuevo_objetivo == 15 and c.es_mona) 
-                            for c in mano_restante
-                        )
-                        if tiene_respaldo:
-                            cartas_combinadas = [carta] + list(elem.cartas)
-                            self.mesa.pop(idx)
-                            bloquear_fila = (nuevo_objetivo >= 12)
-                            self.mesa.append(ElementoMesa(cartas_combinadas, nuevo_objetivo, bloqueada=bloquear_fila, creador_id=2))
-                            self.fusionar_pilas_mesa()
-                            ia_mano.remove(carta)
-                            self.ultimo_anuncio_captura = f"➕ La IA formó {nuevo_objetivo}"
-                            self.siguiente_turno()
-                            return
-
-        cartas_validas = [c for c in ia_mano if self.es_lanzamiento_permitido(c, 2)]
-        if cartas_validas:
-            cartas_seguras = [c for c in cartas_validas if c.puntos == 0 and not c.es_mona and c.nominal not in [1, 10, 2]]
-            carta_a_lanzar = cartas_seguras[0] if cartas_seguras else cartas_validas[0]
-            ia_mano.remove(carta_a_lanzar)
-            self.mesa.append(ElementoMesa([carta_a_lanzar], carta_a_lanzar.nominal))
-            self.fusionar_pilas_mesa()
-            self.ultimo_anuncio_captura = f"🃏 La IA soltó {carta_a_lanzar}"
-            self.siguiente_turno()
-            return
-
-        carta_a_lanzar = ia_mano[0]
-        ia_mano.remove(carta_a_lanzar)
-        self.mesa.append(ElementoMesa([carta_a_lanzar], carta_a_lanzar.nominal))
-        self.fusionar_pilas_mesa()
-        self.ultimo_anuncio_captura = f"🃏 La IA soltó una carta"
-        self.siguiente_turno()
-
-    def encontrar_mejor_combinacion_captura(self, objetivo):
-        n = len(self.mesa)
-        for i in range(1, 1 << n):
-            sub_indices = [j for j in range(n) if (i & (1 << j))]
-            elementos_sub = [self.mesa[idx] for idx in sub_indices]
-            if self.es_particion_valida_captura(elementos_sub, objetivo):
-                return sub_indices
-        return None
 
     def siguiente_turno(self):
         self.ia_ejecutando = False
         self.carta_seleccionada_temporal = None
         self.indices_mesa_seleccionados = []
 
-        if self.turno_jugador == 1:
-            self.turno_jugador = 2
-        else:
-            self.turno_jugador = 1
-            if not self.mano_j1 and not self.mano_j2:
-                if self.ronda_actual >= len(self.distribucion_rondas):
-                    if self.modo_juego == 'online' and self.cliente_red:
-                        self.cliente_red.enviar_accion("FINALIZAR_PARTIDA", {})
-                    self.finalizar_juego()
-                    return
-
-                self.ronda_actual += 1
-                if self.modo_juego == 'online' and self.cliente_red:
-                    self.cliente_red.enviar_accion("REPARTIR_RONDA", {"ronda": self.ronda_actual})
-                    return
-                if self.ronda_actual <= len(self.distribucion_rondas):
+        if self.modo_juego != 'online':
+            if self.turno_jugador == 1:
+                self.turno_jugador = 2
+            else:
+                self.turno_jugador = 1
+                if not self.mano_j1 and not self.mano_j2:
+                    if self.ronda_actual >= len(self.distribucion_rondas):
+                        self.finalizar_juego()
+                        return
+                    self.ronda_actual += 1
                     self.repartir_ronda()
-                    return
-                else:
-                    self.finalizar_juego()
                     return
 
         self.actualizar_vista()
-
-    def finalizar_juego_red(self):
-        if isinstance(self.root.winfo_children()[-1], tk.Frame) and any(w.cget("text") == "♠ FIN DE LA PARTIDA ♦" for w in self.root.winfo_children()[-1].winfo_children() if isinstance(w, tk.Label)):
-            return
-        self.finalizar_juego()
 
     def solicitar_revancha(self):
         self.limpiar_ventana()
