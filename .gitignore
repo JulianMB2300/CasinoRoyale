@@ -1,0 +1,5 @@
+# Archivos de PyInstaller y compilación
+build/
+dist/
+*.spec
+*.exe

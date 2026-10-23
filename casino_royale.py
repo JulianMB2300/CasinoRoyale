@@ -325,6 +325,8 @@ class CasinoRoyaleApp:
         self.mesa = [ElementoMesa([Carta.from_dict(c)], c['nominal']) for c in mesa]
         self.mano_j1 = [Carta.from_dict(c) for c in m_j1]
         self.mano_j2 = [Carta.from_dict(c) for c in m_j2]
+        self.pozo_j1 = []
+        self.pozo_j2 = []
         self.turno_jugador = 1
 
         self.lbl_seleccion.config(text=f"¡Partida iniciada! Eres el Jugador {self.mi_id_jugador}")
@@ -860,6 +862,13 @@ class CasinoRoyaleApp:
         suma_total = sum(valores_seleccionados)
         val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
+        # REGLA ANTI-TRAMPA: Si se seleccionan múltiples elementos en la mesa,
+        # obligatoriamente todos deben tener el mismo valor objetivo igual al valor de la carta (barrida).
+        # Se prohíbe sumar múltiples pilas o elementos independientes de la mesa entre sí.
+        if len(self.indices_mesa_seleccionados) > 1:
+            if not all(self.mesa[idx].valor_objetivo == val_carta for idx in self.indices_mesa_seleccionados):
+                return
+
         if not self.es_particion_valida_captura(valores_seleccionados, val_carta):
             return
 
@@ -1151,10 +1160,16 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def finalizar_juego_red(self):
-        # Evitar duplicar si la ventana ya está en resultados
         if isinstance(self.root.winfo_children()[-1], tk.Frame) and any(w.cget("text") == "♠ FIN DE LA PARTIDA ♦" for w in self.root.winfo_children()[-1].winfo_children() if isinstance(w, tk.Label)):
             return
         self.finalizar_juego()
+
+    def solicitar_revancha(self):
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
+            messagebox.showinfo("Revancha", "Solicitud de revancha enviada.")
+        else:
+            self.iniciar_nueva_partida()
 
     def finalizar_juego(self):
         if self.mesa:
@@ -1241,7 +1256,12 @@ class CasinoRoyaleApp:
         lbl_llaves = tk.Label(frame_resultado, text=f"🔑 Llaves finales ganadas por: {'Julian' if self.poseedor_llaves == 1 else nombre_j2}", font=("Arial", 12, "italic"), bg="#2d0a0a", fg="#f5b041")
         lbl_llaves.pack(pady=10)
 
-        tk.Button(frame_resultado, text="🏠 Menú Principal", font=("Arial", 14, "bold"), bg="#4a1212", fg="white", activebackground="#641e1e", bd=3, relief="raised", command=self.mostrar_pantalla_inicio).pack(pady=15, ipady=6, ipadx=15)
+        # Botones de navegación al finalizar la partida
+        frame_botones_fin = tk.Frame(frame_resultado, bg="#2d0a0a")
+        frame_botones_fin.pack(pady=15)
+
+        tk.Button(frame_botones_fin, text="🔄 Revancha", font=("Arial", 14, "bold"), bg="#1e3d24", fg="#d4af37", activebackground="#2d6a4f", bd=3, relief="raised", command=self.solicitar_revancha).pack(side="left", padx=10, ipady=6, ipadx=15)
+        tk.Button(frame_botones_fin, text="🏠 Menú Principal", font=("Arial", 14, "bold"), bg="#4a1212", fg="white", activebackground="#641e1e", bd=3, relief="raised", command=self.mostrar_pantalla_inicio).pack(side="right", padx=10, ipady=6, ipadx=15)
 
 if __name__ == "__main__":
     root = tk.Tk()
