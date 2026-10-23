@@ -862,11 +862,13 @@ class CasinoRoyaleApp:
         suma_total = sum(valores_seleccionados)
         val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
-        # REGLA ANTI-TRAMPA: Si se seleccionan múltiples elementos en la mesa,
-        # obligatoriamente todos deben tener el mismo valor objetivo igual al valor de la carta (barrida).
-        # Se prohíbe sumar múltiples pilas o elementos independientes de la mesa entre sí.
+        # REGLA ANTI-TRAMPA CORREGIDA:
+        # Permite capturar múltiples elementos de la mesa si coinciden individualmente con el valor (ej. barrida)
+        # o si suman juntos el valor exacto de la carta jugada (ej. Mona de 15 capturando 10 + 5).
         if len(self.indices_mesa_seleccionados) > 1:
-            if not all(self.mesa[idx].valor_objetivo == val_carta for idx in self.indices_mesa_seleccionados):
+            mismo_valor = all(self.mesa[idx].valor_objetivo == val_carta for idx in self.indices_mesa_seleccionados)
+            suma_coincide = (suma_total == val_carta)
+            if not (mismo_valor or suma_coincide):
                 return
 
         if not self.es_particion_valida_captura(valores_seleccionados, val_carta):
