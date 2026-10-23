@@ -1180,7 +1180,9 @@ class CasinoRoyaleApp:
         self.finalizar_juego()
 
     def solicitar_revancha(self):
-        # Forzar reinicio local inmediato sin depender del servidor web para evitar bloqueos
+        # En modo online o local, forzamos el reinicio limpio de la partida de inmediato
+        if self.modo_juego == 'online' and self.cliente_red:
+            self.cliente_red.enviar_accion("SOLICITAR_REVANCHA", {})
         self.iniciar_nueva_partida()
     
     def finalizar_juego(self):
