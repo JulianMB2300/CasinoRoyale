@@ -680,40 +680,93 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def mano_posee_respaldo_para_valor(self, mano, valor_objetivo):
+        """Indica si al menos una carta puede respaldar el valor indicado."""
         for c in mano:
             if c.es_mona and valor_objetivo == 15:
                 return True
-            if c.nominal == 1 and valor_objetivo in [1, 14]:
+            if c.nominal == 1 and valor_objetivo in (1, 14):
                 return True
             if not c.es_mona and c.nominal == valor_objetivo:
                 return True
         return False
 
+    def mano_puede_respaldar_valores(self, mano, valores_objetivo):
+        """Asigna una carta DISTINTA a cada formación que necesita respaldo.
+
+        Una misma carta no puede respaldar dos formaciones. Se usa búsqueda
+        con retroceso porque el As puede respaldar tanto 1 como 14.
+        """
+        valores = list(valores_objetivo)
+        if not valores:
+            return True
+        if len(mano) < len(valores):
+            return False
+
+        # Resolver primero los valores con menos cartas compatibles.
+        def compatible(carta, valor):
+            return (
+                (carta.es_mona and valor == 15)
+                or (not carta.es_mona and carta.nominal == valor)
+                or (not carta.es_mona and carta.nominal == 1 and valor in (1, 14))
+            )
+
+        valores.sort(key=lambda valor: sum(1 for carta in mano if compatible(carta, valor)))
+        usadas = [False] * len(mano)
+
+        def asignar(posicion):
+            if posicion == len(valores):
+                return True
+            valor = valores[posicion]
+            for indice, carta in enumerate(mano):
+                if not usadas[indice] and compatible(carta, valor):
+                    usadas[indice] = True
+                    if asignar(posicion + 1):
+                        return True
+                    usadas[indice] = False
+            return False
+
+        return asignar(0)
+
+    def valores_formaciones_respaldo(self, id_jugador, indices_excluidos=()):
+        """Valores de las formaciones propias que seguirán sobre la mesa."""
+        excluidos = set(indices_excluidos)
+        return [
+            elem.valor_objetivo
+            for indice, elem in enumerate(self.mesa)
+            if indice not in excluidos
+            and elem.creador_id == id_jugador
+            and (elem.bloqueada or elem.valor_objetivo >= 12)
+        ]
+
+    def puede_formar_con_respaldo(self, mano, carta, id_jugador, objetivo, indices_mesa_usados, nueva_fila_bloqueada=False):
+        """Comprueba los respaldos en el estado que quedaría tras la jugada."""
+        mano_restante = list(mano)
+        if carta in mano_restante:
+            mano_restante.remove(carta)
+
+        valores = self.valores_formaciones_respaldo(id_jugador, indices_mesa_usados)
+        # Toda formación nueva debe tener su propia carta de respaldo.
+        valores.append(objetivo)
+        return self.mano_puede_respaldar_valores(mano_restante, valores)
+
     def es_lanzamiento_permitido(self, carta_seleccionada, id_jugador):
         mano_actual = self.mano_j1 if id_jugador == 1 else self.mano_j2
 
         coincide_valor_existente = any(
-            (carta_seleccionada.nominal == elem.valor_objetivo) or 
-            (carta_seleccionada.nominal == 1 and elem.valor_objetivo in [1, 14]) or
-            (carta_seleccionada.es_mona and elem.valor_objetivo == 15)
+            (carta_seleccionada.nominal == elem.valor_objetivo)
+            or (carta_seleccionada.nominal == 1 and elem.valor_objetivo in (1, 14))
+            or (carta_seleccionada.es_mona and elem.valor_objetivo == 15)
             for elem in self.mesa
         )
         if coincide_valor_existente:
             return False
 
-        filas_propias = [elem for elem in self.mesa if elem.creador_id == id_jugador and (elem.bloqueada or elem.valor_objetivo >= 12)]
-        if not filas_propias:
-            return True
-
         mano_restante = list(mano_actual)
         if carta_seleccionada in mano_restante:
             mano_restante.remove(carta_seleccionada)
 
-        for fila in filas_propias:
-            if not self.mano_posee_respaldo_para_valor(mano_restante, fila.valor_objetivo):
-                return False
-
-        return True
+        valores = self.valores_formaciones_respaldo(id_jugador)
+        return self.mano_puede_respaldar_valores(mano_restante, valores)
 
     def obtener_nombre_jugador(self, id_j):
         if self.modo_juego == 'ia':
@@ -738,8 +791,9 @@ class CasinoRoyaleApp:
         
         self.lbl_anuncio_vivo.config(text=self.ultimo_anuncio_captura)
         
-        filas_propias = [elem for elem in self.mesa if elem.creador_id == id_j_actual and (elem.bloqueada or elem.valor_objetivo >= 12)]
-        esta_acorralado = any(not self.mano_posee_respaldo_para_valor(mano_actual, f.valor_objetivo) for f in filas_propias)
+        mano_del_turno = self.mano_j1 if id_j_actual == 1 else self.mano_j2
+        valores_formaciones = self.valores_formaciones_respaldo(id_j_actual)
+        esta_acorralado = not self.mano_puede_respaldar_valores(mano_del_turno, valores_formaciones)
 
         if esta_acorralado:
             self.lbl_seleccion.config(text="⚠️ ESTÁS ACORRALADO: No tienes respaldo para tu fila. Debes llevarla al cajón.")
@@ -1002,15 +1056,17 @@ class CasinoRoyaleApp:
 
         id_j = self.turno_jugador
         mano_actual = self.mano_j1 if id_j == 1 else self.mano_j2
-        mano_restante = list(mano_actual)
-        mano_restante.remove(carta)
-
-        tiene_respaldo_suma = any(c.nominal == nuevo_objetivo or (nuevo_objetivo == 14 and c.nominal == 1) or (nuevo_objetivo == 15 and c.es_mona) for c in mano_restante)
-        if not tiene_respaldo_suma:
+        indices_copia = list(self.indices_mesa_seleccionados)
+        if not self.puede_formar_con_respaldo(
+            mano_actual, carta, id_j, nuevo_objetivo, indices_copia
+        ):
+            messagebox.showwarning(
+                "Formación sin respaldo",
+                "No puedes hacer esa formación: cada formación propia debe tener una carta distinta de respaldo en tu mano."
+            )
             return
 
         cartas_combinadas = [carta]
-        indices_copia = list(self.indices_mesa_seleccionados)
         for idx in sorted(indices_copia, reverse=True):
             elem = self.mesa.pop(idx)
             cartas_combinadas.extend(elem.cartas)
@@ -1063,14 +1119,18 @@ class CasinoRoyaleApp:
         if objetivo_fila > 15:
             return
 
-        mano_restante = list(mano_actual)
-        mano_restante.remove(carta)
-        tiene_respaldo = any(c.nominal == objetivo_fila or (objetivo_fila == 14 and c.nominal == 1) for c in mano_restante)
-        if not tiene_respaldo:
+        indices_copia = list(self.indices_mesa_seleccionados)
+        if not self.puede_formar_con_respaldo(
+            mano_actual, carta, id_j, objetivo_fila, indices_copia,
+            nueva_fila_bloqueada=True
+        ):
+            messagebox.showwarning(
+                "Formación sin respaldo",
+                "No puedes hacer esa fila: cada formación propia debe tener una carta distinta de respaldo en tu mano."
+            )
             return
 
         cartas_combinadas = [carta]
-        indices_copia = list(self.indices_mesa_seleccionados)
         for idx in sorted(indices_copia, reverse=True):
             elem = self.mesa.pop(idx)
             cartas_combinadas.extend(elem.cartas)
@@ -1165,14 +1225,10 @@ class CasinoRoyaleApp:
                 if not elem.bloqueada and elem.valor_objetivo < 15:
                     nuevo_objetivo = elem.valor_objetivo + carta.nominal
                     if nuevo_objetivo <= 15:
-                        mano_restante = [c for c in ia_mano if c != carta]
-                        tiene_respaldo = any(
-                            c.nominal == nuevo_objetivo or 
-                            (nuevo_objetivo == 14 and c.nominal == 1) or 
-                            (nuevo_objetivo == 15 and c.es_mona) 
-                            for c in mano_restante
-                        )
-                        if tiene_respaldo:
+                        if self.puede_formar_con_respaldo(
+                            ia_mano, carta, 2, nuevo_objetivo, [idx],
+                            nueva_fila_bloqueada=(nuevo_objetivo >= 12)
+                        ):
                             cartas_combinadas = [carta] + list(elem.cartas)
                             self.mesa.pop(idx)
                             bloquear_fila = (nuevo_objetivo >= 12)
