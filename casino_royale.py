@@ -150,21 +150,21 @@ class ClienteCasinoRed:
 
                         if tipo == "LOGIN_EXITOSO":
                             self.perfil_usuario = payload.get("perfil")
-                            self.app.root.after(0, lambda: self.app.notificar_login_exitoso(self.perfil_usuario))
+                            self.app.root.after(0, lambda perfil=self.perfil_usuario: self.app.notificar_login_exitoso(perfil))
                         elif tipo == "SALA_CREADA":
                             sala_id = payload.get("sala_id")
                             nombre_sala = payload.get("nombre")
-                            self.app.root.after(0, lambda: self.app.notificar_sala_creada(sala_id, nombre_sala))
+                            self.app.root.after(0, lambda sala_id=sala_id, nombre_sala=nombre_sala: self.app.notificar_sala_creada(sala_id, nombre_sala))
                         elif tipo == "UNIDO_SALA":
                             sala_id = payload.get("sala_id")
                             id_jugador = payload.get("id_jugador", 2)
-                            self.app.root.after(0, lambda: self.app.notificar_unido_sala(sala_id, id_jugador))
+                            self.app.root.after(0, lambda sala_id=sala_id, id_jugador=id_jugador: self.app.notificar_unido_sala(sala_id, id_jugador))
                         elif tipo == "INICIAR_PARTIDA":
-                            self.app.root.after(0, lambda: self.app.iniciar_partida_red(payload))
+                            self.app.root.after(0, lambda payload=payload: self.app.iniciar_partida_red(payload))
                         elif tipo == "NUEVA_RONDA":
-                            self.app.root.after(0, lambda: self.app.aplicar_nueva_ronda_red(payload))
+                            self.app.root.after(0, lambda payload=payload: self.app.aplicar_nueva_ronda_red(payload))
                         elif tipo == "ACCION_JUEGO":
-                            self.app.root.after(0, lambda: self.app.procesar_accion_remota(payload))
+                            self.app.root.after(0, lambda payload=payload: self.app.procesar_accion_remota(payload))
                         elif tipo == "FINALIZAR_PARTIDA":
                             self.app.root.after(0, lambda: self.app.finalizar_juego_red())
                 except websockets.exceptions.ConnectionClosed:
