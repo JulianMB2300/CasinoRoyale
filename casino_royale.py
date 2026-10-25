@@ -471,6 +471,7 @@ class CasinoRoyaleApp:
 
             pozo_oponente.append(carta)
             self.poseedor_llaves = jugador_id
+            self.fusionar_pilas_mesa()
             self.ultimo_anuncio_captura = self.generar_anuncio_captura(jugador_id, carta, cartas_capturadas_total)
 
         # Actualizar turno al rival
@@ -896,8 +897,10 @@ class CasinoRoyaleApp:
         return "Julian" if id_j == 1 else "Jugador 2"
 
     def actualizar_vista(self):
-        self.fusionar_pilas_mesa()
-        
+        # No fusionar/reordenar la mesa durante el redibujado. En modo online
+        # las acciones remotas usan índices; mutar la mesa al dibujar puede
+        # desincronizar clientes y duplicar o dejar formaciones atascadas.
+        # Las fusiones deben ocurrir dentro de las acciones del juego.
         id_j_actual = self.turno_jugador
         mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
@@ -1137,6 +1140,7 @@ class CasinoRoyaleApp:
         pozo_activo.append(carta)
         mano_actual.remove(carta)
         self.poseedor_llaves = id_j
+        self.fusionar_pilas_mesa()
 
         self.ultimo_anuncio_captura = self.generar_anuncio_captura(id_j, carta, cartas_capturadas_total)
 
