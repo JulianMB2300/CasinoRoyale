@@ -249,6 +249,9 @@ class CasinoRoyaleApp:
         lbl_sub = tk.Label(frame_menu, text="Selecciona el modo de juego", font=("Arial", 14, "bold"), bg="#2d0a0a", fg="#f5b041")
         lbl_sub.pack(pady=10)
 
+        btn_1v1 = tk.Button(frame_menu, text="👥 Jugador vs Jugador (1v1 Local)", font=("Arial", 13, "bold"), bg="#3d1414", fg="#f5b041", activebackground="#5a1e1e", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('1v1'))
+        btn_1v1.pack(pady=8)
+
         btn_ia = tk.Button(frame_menu, text="🤖 Jugador vs IA Competitiva", font=("Arial", 13, "bold"), bg="#3d1414", fg="#f5b041", activebackground="#5a1e1e", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('ia'))
         btn_ia.pack(pady=8)
 
@@ -803,6 +806,54 @@ class CasinoRoyaleApp:
 
         return self.mano_puede_respaldar_valores(mano_restante, valores)
 
+    def existe_jugada_alternativa_valida(self, id_jugador):
+        """True si el jugador puede capturar o crear una formación respaldada.
+
+        Se usa para impedir descartes arbitrarios mientras conserva formaciones
+        propias activas. Solo considera elementos sueltos al construir sumas;
+        no combina una pila existente con cartas externas.
+        """
+        mano = self.mano_j1 if id_jugador == 1 else self.mano_j2
+        if not mano:
+            return False
+
+        # Opción 1: capturar cualquier conjunto legal de elementos de la mesa.
+        for carta in mano:
+            val_carta = 15 if carta.es_mona else (14 if carta.nominal == 1 else carta.nominal)
+            n = len(self.mesa)
+            for mascara in range(1, 1 << n):
+                indices = [i for i in range(n) if mascara & (1 << i)]
+                elementos = [self.mesa[i] for i in indices]
+                # La validación de captura ya contempla pilas y sumas permitidas.
+                if self.es_particion_valida_captura(elementos, val_carta):
+                    return True
+                # Para As, probar también valor 1 (además de 14).
+                if carta.nominal == 1 and self.es_particion_valida_captura(elementos, 1):
+                    return True
+
+        # Opción 2: formar una suma legal con elementos sueltos y conservar
+        # una carta distinta que respalde el objetivo.
+        for carta in mano:
+            if carta.es_mona:
+                continue
+            for idx, elem in enumerate(self.mesa):
+                if len(elem.cartas) != 1 or elem.bloqueada or elem.valor_objetivo >= 15:
+                    continue
+                objetivo = elem.valor_objetivo + carta.nominal
+                if carta.nominal == 1:
+                    objetivos = {objetivo, elem.valor_objetivo + 14}
+                else:
+                    objetivos = {objetivo}
+                for objetivo in objetivos:
+                    if objetivo > 15:
+                        continue
+                    if self.puede_formar_con_respaldo(
+                        mano, carta, id_jugador, objetivo, [idx],
+                        nueva_fila_bloqueada=(objetivo >= 12)
+                    ):
+                        return True
+        return False
+
     def es_lanzamiento_permitido(self, carta_seleccionada, id_jugador):
         mano_actual = self.mano_j1 if id_jugador == 1 else self.mano_j2
 
@@ -815,11 +866,21 @@ class CasinoRoyaleApp:
         if coincide_valor_existente:
             return False
 
+        valores = self.valores_formaciones_respaldo(id_jugador)
+        if not valores:
+            return True
+
+        # Si hay una jugada legal alternativa (otra suma respaldada o captura),
+        # no se permite descartar una carta sin relación con esa jugada.
+        if self.existe_jugada_alternativa_valida(id_jugador):
+            return False
+
         mano_restante = list(mano_actual)
         if carta_seleccionada in mano_restante:
             mano_restante.remove(carta_seleccionada)
 
-        valores = self.valores_formaciones_respaldo(id_jugador)
+        # Si no queda respaldo para las formaciones activas, el descarte tampoco
+        # es legal: el jugador debe recoger una formación.
         return self.mano_puede_respaldar_valores(mano_restante, valores)
 
     def obtener_nombre_jugador(self, id_j):
@@ -833,9 +894,8 @@ class CasinoRoyaleApp:
         return "Julian" if id_j == 1 else "Jugador 2"
 
     def actualizar_vista(self):
-        # IMPORTANTE: dibujar la interfaz no debe modificar el estado de la mesa.
-        # Fusionar pilas aquí cambiaba los índices de mesa durante cada refresco,
-        # desincronizando selecciones y bloqueando acciones de los jugadores.
+        self.fusionar_pilas_mesa()
+        
         id_j_actual = self.turno_jugador
         mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
@@ -990,68 +1050,47 @@ class CasinoRoyaleApp:
         self.actualizar_vista()
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
-        """Valida capturas permitiendo que cada As suelto valga 1 o 14.
-
-        Las formaciones existentes no se mezclan con cartas sueltas externas
-        para fabricar un objetivo distinto. Las cartas sueltas sí pueden
-        separarse en uno o más grupos cuyo valor sea el objetivo.
+        """
+        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
+        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
+        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
         """
         if not elementos_seleccionados:
             return False
 
-        # Una formación/pila solo puede capturarse directamente por su valor,
-        # o junto a otras formaciones del mismo valor.
+        # Si solo seleccionó una pila/elemento de la mesa
+        if len(elementos_seleccionados) == 1:
+            return elementos_seleccionados[0].valor_objetivo == objetivo
+
+        # Si seleccionó múltiples elementos de la mesa:
+        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
+        if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
+            return True
+
+        # Caso B: Suma de elementos sueltos.
+        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
+        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
-                if any(otro is not elem for otro in elementos_seleccionados):
-                    return False
+                return False
 
-        # Cada elemento suelto tiene un valor posible. Un As suelto puede ser 1 o 14.
-        opciones = []
-        for elem in elementos_seleccionados:
-            if len(elem.cartas) == 1 and elem.cartas[0].nominal == 1:
-                opciones.append((1, 14))
-            else:
-                opciones.append((elem.valor_objetivo,))
-
-        # Busca una asignación de valores y una partición completa en grupos
-        # que sumen exactamente el objetivo. No se puede dejar carta seleccionada fuera.
-        n = len(opciones)
-        valores = [None] * n
-
-        def asignar(i):
-            if i == n:
-                def particionar(restantes):
-                    if not restantes:
+        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
+        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
+        valores = [elem.valor_objetivo for elem in elementos_seleccionados]
+        
+        def verificar_subgrupos(lista_val, obj):
+            if not lista_val:
+                return True
+            n = len(lista_val)
+            for i in range(1, 1 << n):
+                subconjunto = [lista_val[j] for j in range(n) if (i & (1 << j))]
+                if sum(subconjunto) == obj:
+                    restantes = [lista_val[j] for j in range(n) if not (i & (1 << j))]
+                    if verificar_subgrupos(restantes, obj):
                         return True
-                    primero = restantes[0]
-                    otros = restantes[1:]
-                    # El grupo debe incluir al primer elemento pendiente para
-                    # evitar probar permutaciones equivalentes.
-                    for mascara in range(1 << len(otros)):
-                        grupo = [primero]
-                        resto = []
-                        suma = valores[primero]
-                        for j, idx in enumerate(otros):
-                            if mascara & (1 << j):
-                                grupo.append(idx)
-                                suma += valores[idx]
-                            else:
-                                resto.append(idx)
-                        if suma == objetivo and particionar(resto):
-                            return True
-                    return False
-                return particionar(list(range(n)))
-            for v in opciones[i]:
-                valores[i] = v
-                if asignar(i + 1):
-                    return True
             return False
 
-        # Si se selecciona una sola formación, solo se captura por su valor exacto.
-        if len(elementos_seleccionados) == 1 and len(elementos_seleccionados[0].cartas) > 1:
-            return elementos_seleccionados[0].valor_objetivo == objetivo
-        return asignar(0)
+        return verificar_subgrupos(valores, objetivo)
 
     def generar_anuncio_captura(self, id_jugador, carta_jugada, cartas_capturadas):
         nombre_jugador = self.obtener_nombre_jugador(id_jugador)
@@ -1076,23 +1115,10 @@ class CasinoRoyaleApp:
         elementos_sel = [self.mesa[i] for i in self.indices_mesa_seleccionados]
         suma_total = sum(elem.valor_objetivo for elem in elementos_sel)
         
-        # Si la carta jugada es un As, probar ambos valores posibles de forma
-        # independiente de la suma aritmética bruta de la selección. Esto permite,
-        # por ejemplo, capturar 10 + 4 + As de mesa con un As de la mano:
-        # el As de mesa vale 14 y el grupo 10 + 4 también suma 14.
-        if carta.nominal == 1:
-            candidatos_valor = (14, 1)
-        elif carta.es_mona:
-            candidatos_valor = (15,)
-        else:
-            candidatos_valor = (carta.nominal,)
+        val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
 
-        val_carta = None
-        for candidato in candidatos_valor:
-            if self.es_particion_valida_captura(elementos_sel, candidato):
-                val_carta = candidato
-                break
-        if val_carta is None:
+        # Validación estricta que impide fusionar formaciones fijas con cartas externas
+        if not self.es_particion_valida_captura(elementos_sel, val_carta):
             return
 
         id_j = self.turno_jugador
