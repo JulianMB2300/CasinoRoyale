@@ -626,6 +626,52 @@ class CasinoRoyaleApp:
         )
         btn_menu.pack(side="right", padx=5)
 
+    def fusionar_sumatorias_equivalentes(self, objetivo):
+        """Une a una fila ya formada las cartas sueltas cuya suma sea el mismo objetivo.
+
+        Ejemplos: una fila de 15 absorbe Q+3; una fila de 11 absorbe 7+4.
+        Solo considera cartas sueltas (elementos de una carta), para no permitir
+        que una pila existente se combine con cartas externas para crear otra fila.
+        """
+        # Primero fusionar pilas que ya tengan exactamente el mismo valor.
+        self.fusionar_pilas_mesa()
+        while True:
+            indice_fila = next((i for i, e in enumerate(self.mesa)
+                                if e.valor_objetivo == objetivo and len(e.cartas) > 1), None)
+            if indice_fila is None:
+                return
+
+            candidatos = [i for i, e in enumerate(self.mesa)
+                          if i != indice_fila and len(e.cartas) == 1
+                          and 0 < e.valor_objetivo < objetivo]
+            encontrado = None
+            # Buscar una combinación de cartas sueltas que sume el valor de la fila.
+            # Se usa búsqueda exhaustiva porque la mesa normalmente tiene pocas cartas.
+            def buscar(pos, suma, indices):
+                nonlocal encontrado
+                if suma == objetivo and indices:
+                    encontrado = list(indices)
+                    return True
+                if suma >= objetivo or pos >= len(candidatos):
+                    return False
+                for j in range(pos, len(candidatos)):
+                    idx = candidatos[j]
+                    if buscar(j + 1, suma + self.mesa[idx].valor_objetivo, indices + [idx]):
+                        return True
+                return False
+
+            if not buscar(0, 0, []):
+                return
+
+            # Incorporar todas las cartas sueltas encontradas a la fila existente.
+            fila = self.mesa[indice_fila]
+            for idx in sorted(encontrado, reverse=True):
+                fila.cartas.extend(self.mesa[idx].cartas)
+                self.mesa.pop(idx)
+                if idx < indice_fila:
+                    indice_fila -= 1
+            self.fusionar_pilas_mesa()
+
     def fusionar_pilas_mesa(self):
         dic_agrupado = {}
         for elem in self.mesa:
@@ -1109,7 +1155,7 @@ class CasinoRoyaleApp:
             cartas_combinadas.extend(elem.cartas)
 
         self.mesa.append(ElementoMesa(cartas_combinadas, nuevo_objetivo, bloqueada=False, creador_id=id_j))
-        self.fusionar_pilas_mesa()
+        self.fusionar_sumatorias_equivalentes(nuevo_objetivo)
         mano_actual.remove(carta)
 
         nombre_j = self.obtener_nombre_jugador(id_j)
@@ -1182,7 +1228,7 @@ class CasinoRoyaleApp:
             cartas_combinadas.extend(elem.cartas)
 
         self.mesa.append(ElementoMesa(cartas_combinadas, objetivo_fila, bloqueada=True, creador_id=id_j))
-        self.fusionar_pilas_mesa()
+        self.fusionar_sumatorias_equivalentes(objetivo_fila)
         mano_actual.remove(carta)
 
         nombre_j = self.obtener_nombre_jugador(id_j)
