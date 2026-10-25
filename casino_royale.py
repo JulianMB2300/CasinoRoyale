@@ -836,8 +836,9 @@ class CasinoRoyaleApp:
         return "Julian" if id_j == 1 else "Jugador 2"
 
     def actualizar_vista(self):
-        self.fusionar_pilas_mesa()
-        
+        # IMPORTANTE: dibujar la interfaz no debe modificar el estado de la mesa.
+        # Fusionar pilas aquí cambiaba los índices de mesa durante cada refresco,
+        # desincronizando selecciones y bloqueando acciones de los jugadores.
         id_j_actual = self.turno_jugador
         mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
