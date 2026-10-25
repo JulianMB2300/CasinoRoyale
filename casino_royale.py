@@ -1076,10 +1076,23 @@ class CasinoRoyaleApp:
         elementos_sel = [self.mesa[i] for i in self.indices_mesa_seleccionados]
         suma_total = sum(elem.valor_objetivo for elem in elementos_sel)
         
-        val_carta = 14 if (carta.nominal == 1 and suma_total % 14 == 0) else (15 if carta.es_mona else carta.nominal)
+        # Si la carta jugada es un As, probar ambos valores posibles de forma
+        # independiente de la suma aritmética bruta de la selección. Esto permite,
+        # por ejemplo, capturar 10 + 4 + As de mesa con un As de la mano:
+        # el As de mesa vale 14 y el grupo 10 + 4 también suma 14.
+        if carta.nominal == 1:
+            candidatos_valor = (14, 1)
+        elif carta.es_mona:
+            candidatos_valor = (15,)
+        else:
+            candidatos_valor = (carta.nominal,)
 
-        # Validación estricta que impide fusionar formaciones fijas con cartas externas
-        if not self.es_particion_valida_captura(elementos_sel, val_carta):
+        val_carta = None
+        for candidato in candidatos_valor:
+            if self.es_particion_valida_captura(elementos_sel, candidato):
+                val_carta = candidato
+                break
+        if val_carta is None:
             return
 
         id_j = self.turno_jugador
