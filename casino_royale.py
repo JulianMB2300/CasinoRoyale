@@ -781,7 +781,9 @@ class CasinoRoyaleApp:
             for indice, elem in enumerate(self.mesa)
             if indice not in excluidos
             and elem.creador_id == id_jugador
-            and (elem.bloqueada or elem.valor_objetivo >= 12)
+            # Toda formación propia activa debe respetarse, no solo las filas
+            # bloqueadas o las de valor 12 o superior. Esto incluye, por ejemplo,
+            # una formación de 7.
         ]
 
     def puede_formar_con_respaldo(self, mano, carta, id_jugador, objetivo, indices_mesa_usados, nueva_fila_bloqueada=False):
