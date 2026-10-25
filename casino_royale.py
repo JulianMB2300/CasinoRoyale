@@ -1056,80 +1056,49 @@ class CasinoRoyaleApp:
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
         """
-        Valida capturas usando el valor objetivo de cada elemento.
-        Los As sueltos pueden valer 1 o 14 de forma independiente: por ejemplo,
-        J + 3 + As de la mesa puede capturarse con un As de la mano como
-        (J + 3 = 14) y (As = 14). Las formaciones existentes no se descomponen
-        ni se suman con cartas externas.
+        Valida capturas con As flexibles (1 o 14, cada uno por separado).
+        Una formación acumulada no se combina con cartas externas de otro valor.
         """
         if not elementos_seleccionados:
             return False
 
-        if len(elementos_seleccionados) == 1:
-            elem = elementos_seleccionados[0]
-            if elem.valor_objetivo == objetivo:
-                return True
-            # Solo un As suelto tiene elección flexible; una formación conserva
-            # el valor objetivo con el que fue creada.
-            return (
-                len(elem.cartas) == 1
-                and elem.cartas[0].nominal == 1
-                and objetivo in (1, 14)
-            )
-
-        # Barrida: cada elemento seleccionado coincide con el objetivo.
-        if all(
-            elem.valor_objetivo == objetivo
-            or (
-                len(elem.cartas) == 1
-                and elem.cartas[0].nominal == 1
-                and objetivo in (1, 14)
-            )
-            for elem in elementos_seleccionados
-        ):
-            return True
-
-        # No se permite mezclar una formación acumulada con elementos externos
-        # de valor diferente. Sí se permiten varias formaciones del mismo valor.
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
                 return False
 
-        # Cada carta suelta tiene una lista de valores posibles. Solo los As
-        # sueltos pueden interpretarse como 1 o 14, independientemente.
         opciones = []
         for elem in elementos_seleccionados:
             if len(elem.cartas) == 1 and elem.cartas[0].nominal == 1:
-                opciones.append({1, 14})
+                opciones.append((1, 14))
             else:
-                opciones.append({elem.valor_objetivo})
+                opciones.append((elem.valor_objetivo,))
 
-        def particionar(indices_restantes):
-            if not indices_restantes:
+        def puede_sumar(indices, total=0, pos=0):
+            if pos == len(indices):
+                return total == objetivo
+            idx = indices[pos]
+            return any(
+                puede_sumar(indices, total + valor, pos + 1)
+                for valor in opciones[idx]
+            )
+
+        def particionar(restantes):
+            if not restantes:
                 return True
-            primero = indices_restantes[0]
-            otros = indices_restantes[1:]
-            # Probar cada valor permitido del primer elemento y buscar un
-            # subconjunto de los restantes que complete el objetivo.
-            for valor_primero in opciones[primero]:
-                for mascara in range(1 << len(otros)):
-                    elegidos = [otros[j] for j in range(len(otros)) if mascara & (1 << j)]
-                    valores_elegidos = [valor_primero]
-                    for idx in elegidos:
-                        valores_elegidos.append(min(opciones[idx]))
-                    # Si hay As en el subconjunto, probar combinaciones 1/14.
-                    def suma_opciones(pos, total):
-                        if pos == len(elegidos):
-                            return total == objetivo
-                        idx = elegidos[pos]
-                        return any(
-                            suma_opciones(pos + 1, total + v)
-                            for v in opciones[idx]
-                        )
-                    if suma_opciones(0, valor_primero):
-                        restantes = [i for i in otros if i not in elegidos]
-                        if particionar(restantes):
-                            return True
+            primero = restantes[0]
+            otros = restantes[1:]
+            for mascara in range(1 << len(otros)):
+                grupo = [primero]
+                grupo.extend(
+                    otros[j] for j in range(len(otros))
+                    if mascara & (1 << j)
+                )
+                if not puede_sumar(grupo):
+                    continue
+                grupo_set = set(grupo)
+                sobrantes = [idx for idx in restantes if idx not in grupo_set]
+                if particionar(sobrantes):
+                    return True
             return False
 
         return particionar(list(range(len(elementos_seleccionados))))
