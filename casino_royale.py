@@ -1044,8 +1044,34 @@ class CasinoRoyaleApp:
 
         self.siguiente_turno()
 
+    def seleccion_mezcla_formacion_con_carta_externa(self, indices):
+        """Impide sumar una formación/pila con cartas sueltas de otro valor.
+
+        Una pila existente (por ejemplo, 4+2 que ya vale 6) puede ampliarse
+        jugando una carta directamente sobre ella, pero no puede combinarse
+        además con otra carta suelta (por ejemplo, un 3) para fabricar otro
+        objetivo con una carta de la mano.
+        """
+        elementos = [self.mesa[i] for i in indices]
+        for elem in elementos:
+            if len(elem.cartas) > 1:
+                if any(otro is not elem and otro.valor_objetivo != elem.valor_objetivo
+                       for otro in elementos):
+                    return True
+        return False
+
     def ejecutar_suma_simple(self):
         if not self.carta_seleccionada_temporal or not self.indices_mesa_seleccionados:
+            return
+
+        # No permitir, por ejemplo, usar una pila 4+2 (valor 6) junto con un
+        # 3 suelto y un As para formar 10. Para subir la pila de 6 a 10 debe
+        # jugarse un 4 directamente sobre esa pila.
+        if self.seleccion_mezcla_formacion_con_carta_externa(self.indices_mesa_seleccionados):
+            messagebox.showwarning(
+                "Formación no válida",
+                "No puedes combinar una formación existente con cartas sueltas externas. Juega la carta directamente sobre la formación."
+            )
             return
 
         carta = self.carta_seleccionada_temporal
@@ -1102,6 +1128,15 @@ class CasinoRoyaleApp:
 
     def ejecutar_crear_fila(self):
         if not self.carta_seleccionada_temporal or not self.indices_mesa_seleccionados:
+            return
+
+        # Aplicar la misma restricción al crear una fila protegida, para que
+        # la jugada ilegal no pueda hacerse usando este otro botón.
+        if self.seleccion_mezcla_formacion_con_carta_externa(self.indices_mesa_seleccionados):
+            messagebox.showwarning(
+                "Formación no válida",
+                "No puedes combinar una formación existente con cartas sueltas externas. Juega la carta directamente sobre la formación."
+            )
             return
 
         carta = self.carta_seleccionada_temporal
