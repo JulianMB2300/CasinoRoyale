@@ -1056,46 +1056,83 @@ class CasinoRoyaleApp:
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
         """
-        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
-        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
-        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
+        Valida capturas usando el valor objetivo de cada elemento.
+        Los As sueltos pueden valer 1 o 14 de forma independiente: por ejemplo,
+        J + 3 + As de la mesa puede capturarse con un As de la mano como
+        (J + 3 = 14) y (As = 14). Las formaciones existentes no se descomponen
+        ni se suman con cartas externas.
         """
         if not elementos_seleccionados:
             return False
 
-        # Si solo seleccionó una pila/elemento de la mesa
         if len(elementos_seleccionados) == 1:
-            return elementos_seleccionados[0].valor_objetivo == objetivo
+            elem = elementos_seleccionados[0]
+            if elem.valor_objetivo == objetivo:
+                return True
+            # Solo un As suelto tiene elección flexible; una formación conserva
+            # el valor objetivo con el que fue creada.
+            return (
+                len(elem.cartas) == 1
+                and elem.cartas[0].nominal == 1
+                and objetivo in (1, 14)
+            )
 
-        # Si seleccionó múltiples elementos de la mesa:
-        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
-        if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
+        # Barrida: cada elemento seleccionado coincide con el objetivo.
+        if all(
+            elem.valor_objetivo == objetivo
+            or (
+                len(elem.cartas) == 1
+                and elem.cartas[0].nominal == 1
+                and objetivo in (1, 14)
+            )
+            for elem in elementos_seleccionados
+        ):
             return True
 
-        # Caso B: Suma de elementos sueltos.
-        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
-        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
+        # No se permite mezclar una formación acumulada con elementos externos
+        # de valor diferente. Sí se permiten varias formaciones del mismo valor.
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
                 return False
 
-        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
-        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
-        valores = [elem.valor_objetivo for elem in elementos_seleccionados]
-        
-        def verificar_subgrupos(lista_val, obj):
-            if not lista_val:
+        # Cada carta suelta tiene una lista de valores posibles. Solo los As
+        # sueltos pueden interpretarse como 1 o 14, independientemente.
+        opciones = []
+        for elem in elementos_seleccionados:
+            if len(elem.cartas) == 1 and elem.cartas[0].nominal == 1:
+                opciones.append({1, 14})
+            else:
+                opciones.append({elem.valor_objetivo})
+
+        def particionar(indices_restantes):
+            if not indices_restantes:
                 return True
-            n = len(lista_val)
-            for i in range(1, 1 << n):
-                subconjunto = [lista_val[j] for j in range(n) if (i & (1 << j))]
-                if sum(subconjunto) == obj:
-                    restantes = [lista_val[j] for j in range(n) if not (i & (1 << j))]
-                    if verificar_subgrupos(restantes, obj):
-                        return True
+            primero = indices_restantes[0]
+            otros = indices_restantes[1:]
+            # Probar cada valor permitido del primer elemento y buscar un
+            # subconjunto de los restantes que complete el objetivo.
+            for valor_primero in opciones[primero]:
+                for mascara in range(1 << len(otros)):
+                    elegidos = [otros[j] for j in range(len(otros)) if mascara & (1 << j)]
+                    valores_elegidos = [valor_primero]
+                    for idx in elegidos:
+                        valores_elegidos.append(min(opciones[idx]))
+                    # Si hay As en el subconjunto, probar combinaciones 1/14.
+                    def suma_opciones(pos, total):
+                        if pos == len(elegidos):
+                            return total == objetivo
+                        idx = elegidos[pos]
+                        return any(
+                            suma_opciones(pos + 1, total + v)
+                            for v in opciones[idx]
+                        )
+                    if suma_opciones(0, valor_primero):
+                        restantes = [i for i in otros if i not in elegidos]
+                        if particionar(restantes):
+                            return True
             return False
 
-        return verificar_subgrupos(valores, objetivo)
+        return particionar(list(range(len(elementos_seleccionados))))
 
     def generar_anuncio_captura(self, id_jugador, carta_jugada, cartas_capturadas):
         nombre_jugador = self.obtener_nombre_jugador(id_jugador)
