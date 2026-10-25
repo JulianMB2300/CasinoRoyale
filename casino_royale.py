@@ -739,14 +739,25 @@ class CasinoRoyaleApp:
         ]
 
     def puede_formar_con_respaldo(self, mano, carta, id_jugador, objetivo, indices_mesa_usados, nueva_fila_bloqueada=False):
-        """Comprueba los respaldos en el estado que quedaría tras la jugada."""
+        """Comprueba los respaldos contando cada valor fusionado una sola vez.
+
+        Las formaciones propias con el mismo valor objetivo se fusionan en una
+        única pila. Por eso, crear otro 14 cuando ya existe un 14 no exige un
+        segundo As: basta con conservar una carta que respalde ese valor.
+        """
         mano_restante = list(mano)
         if carta in mano_restante:
             mano_restante.remove(carta)
 
-        valores = self.valores_formaciones_respaldo(id_jugador, indices_mesa_usados)
-        # Toda formación nueva debe tener su propia carta de respaldo.
-        valores.append(objetivo)
+        valores_existentes = self.valores_formaciones_respaldo(
+            id_jugador, indices_mesa_usados
+        )
+        # La mesa fusiona las formaciones del mismo valor en una sola pila;
+        # la validación debe contar esa pila una sola vez también.
+        valores = list(dict.fromkeys(valores_existentes))
+        if objetivo not in valores:
+            valores.append(objetivo)
+
         return self.mano_puede_respaldar_valores(mano_restante, valores)
 
     def es_lanzamiento_permitido(self, carta_seleccionada, id_jugador):
