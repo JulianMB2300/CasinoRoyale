@@ -1056,52 +1056,46 @@ class CasinoRoyaleApp:
 
     def es_particion_valida_captura(self, elementos_seleccionados, objetivo):
         """
-        Valida capturas con As flexibles (1 o 14, cada uno por separado).
-        Una formación acumulada no se combina con cartas externas de otro valor.
+        Verifica que cada elemento seleccionado de la mesa valga 'objetivo'
+        O que cartas sueltas (no formaciones acumuladas) sumen 'objetivo'.
+        Prohíbe terminantemente fusionar una formación/pila ya existente con cartas sueltas externas.
         """
         if not elementos_seleccionados:
             return False
 
+        # Si solo seleccionó una pila/elemento de la mesa
+        if len(elementos_seleccionados) == 1:
+            return elementos_seleccionados[0].valor_objetivo == objetivo
+
+        # Si seleccionó múltiples elementos de la mesa:
+        # Caso A: Barrida limpia -> Todos los elementos tienen el valor exacto del objetivo (ej. J de la mesa + J de la mano)
+        if all(elem.valor_objetivo == objetivo for elem in elementos_seleccionados):
+            return True
+
+        # Caso B: Suma de elementos sueltos.
+        # Si alguno de los elementos seleccionados es una FORMACIÓN/PILA (más de 1 carta en ese grupo)
+        # y su valor es diferente del objetivo, ¡NO SE PUEDE SUMAR CON CARTAS EXTERNAS!
         for elem in elementos_seleccionados:
             if len(elem.cartas) > 1 and elem.valor_objetivo != objetivo:
                 return False
 
-        opciones = []
-        for elem in elementos_seleccionados:
-            if len(elem.cartas) == 1 and elem.cartas[0].nominal == 1:
-                opciones.append((1, 14))
-            else:
-                opciones.append((elem.valor_objetivo,))
-
-        def puede_sumar(indices, total=0, pos=0):
-            if pos == len(indices):
-                return total == objetivo
-            idx = indices[pos]
-            return any(
-                puede_sumar(indices, total + valor, pos + 1)
-                for valor in opciones[idx]
-            )
-
-        def particionar(restantes):
-            if not restantes:
+        # Caso C: Son cartas sueltas (1 carta por elemento) que juntas deben sumar 'objetivo'
+        # o dividirse en grupos donde cada grupo sume exactamente 'objetivo'
+        valores = [elem.valor_objetivo for elem in elementos_seleccionados]
+        
+        def verificar_subgrupos(lista_val, obj):
+            if not lista_val:
                 return True
-            primero = restantes[0]
-            otros = restantes[1:]
-            for mascara in range(1 << len(otros)):
-                grupo = [primero]
-                grupo.extend(
-                    otros[j] for j in range(len(otros))
-                    if mascara & (1 << j)
-                )
-                if not puede_sumar(grupo):
-                    continue
-                grupo_set = set(grupo)
-                sobrantes = [idx for idx in restantes if idx not in grupo_set]
-                if particionar(sobrantes):
-                    return True
+            n = len(lista_val)
+            for i in range(1, 1 << n):
+                subconjunto = [lista_val[j] for j in range(n) if (i & (1 << j))]
+                if sum(subconjunto) == obj:
+                    restantes = [lista_val[j] for j in range(n) if not (i & (1 << j))]
+                    if verificar_subgrupos(restantes, obj):
+                        return True
             return False
 
-        return particionar(list(range(len(elementos_seleccionados))))
+        return verificar_subgrupos(valores, objetivo)
 
     def generar_anuncio_captura(self, id_jugador, carta_jugada, cartas_capturadas):
         nombre_jugador = self.obtener_nombre_jugador(id_jugador)
