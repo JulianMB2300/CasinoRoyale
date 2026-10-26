@@ -420,6 +420,18 @@ class CasinoRoyaleApp:
             carta = Carta.from_dict(payload.get("carta"))
             indices = payload.get("indices_mesa")
             nuevo_objetivo = payload.get("nuevo_objetivo")
+
+            if not isinstance(indices, list) or any(
+                not isinstance(idx, int) or idx < 0 or idx >= len(self.mesa)
+                for idx in indices
+            ):
+                return
+            if any(
+                self.mesa[idx].bloqueada
+                or self.mesa[idx].creador_id == jugador_id
+                for idx in indices
+            ):
+                return
             
             for c in list(mano_oponente):
                 if c.nominal == carta.nominal and c.palo == carta.palo:
@@ -439,6 +451,18 @@ class CasinoRoyaleApp:
             carta = Carta.from_dict(payload.get("carta"))
             indices = payload.get("indices_mesa")
             objetivo_fila = payload.get("objetivo_fila")
+
+            if not isinstance(indices, list) or any(
+                not isinstance(idx, int) or idx < 0 or idx >= len(self.mesa)
+                for idx in indices
+            ):
+                return
+            if any(
+                self.mesa[idx].bloqueada
+                or self.mesa[idx].creador_id == jugador_id
+                for idx in indices
+            ):
+                return
             
             for c in list(mano_oponente):
                 if c.nominal == carta.nominal and c.palo == carta.palo:
@@ -1243,7 +1267,17 @@ class CasinoRoyaleApp:
             if self.mesa[idx].valor_objetivo >= 15:
                 return 
             elem = self.mesa[idx]
-            if not elem.bloqueada and elem.creador_id == self.turno_jugador:
+            if elem.bloqueada:
+                messagebox.showwarning(
+                    "Fila cerrada",
+                    "No puedes modificar una fila cerrada. Debes capturarla con una jugada válida o jugar en otra parte de la mesa."
+                )
+                return
+            if elem.creador_id == self.turno_jugador:
+                messagebox.showwarning(
+                    "Sumatoria propia",
+                    "No puedes añadir cartas a una sumatoria que tú mismo creaste. El rival debe ampliarla primero."
+                )
                 return
 
         suma_mesa = sum(self.mesa[i].valor_objetivo for i in self.indices_mesa_seleccionados)
@@ -1306,6 +1340,19 @@ class CasinoRoyaleApp:
 
         for idx in self.indices_mesa_seleccionados:
             if self.mesa[idx].valor_objetivo >= 15:
+                return
+            elem = self.mesa[idx]
+            if elem.bloqueada:
+                messagebox.showwarning(
+                    "Fila cerrada",
+                    "No puedes modificar una fila cerrada. Debes capturarla con una jugada válida o jugar en otra parte de la mesa."
+                )
+                return
+            if elem.creador_id == self.turno_jugador:
+                messagebox.showwarning(
+                    "Sumatoria propia",
+                    "No puedes formar otra suma sobre una sumatoria que tú mismo creaste. El rival debe ampliarla primero."
+                )
                 return
 
         id_j = self.turno_jugador
