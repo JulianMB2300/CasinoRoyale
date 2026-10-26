@@ -457,7 +457,15 @@ class CasinoRoyaleApp:
                 for idx in indices
             ):
                 return
-            if any(
+            # Una fila cerrada no se puede ampliar para cambiar su valor, pero
+            # sí se permite jugar una carta del mismo valor para agrupar filas
+            # equivalentes (por ejemplo, fila de 10 + carta 10).
+            misma_fila_valor = all(
+                carta.nominal == self.mesa[idx].valor_objetivo
+                or (carta.nominal == 1 and self.mesa[idx].valor_objetivo in (1, 14))
+                for idx in indices
+            )
+            if not misma_fila_valor and any(
                 self.mesa[idx].bloqueada
                 or self.mesa[idx].creador_id == jugador_id
                 for idx in indices
@@ -1338,17 +1346,24 @@ class CasinoRoyaleApp:
         if carta.es_mona:
             return
 
+        # Permitir agrupar una fila con una carta del mismo valor. Esta jugada
+        # no cambia el valor de la fila; solo reúne elementos equivalentes.
+        misma_fila_valor = all(
+            carta.nominal == self.mesa[idx].valor_objetivo
+            or (carta.nominal == 1 and self.mesa[idx].valor_objetivo in (1, 14))
+            for idx in self.indices_mesa_seleccionados
+        )
         for idx in self.indices_mesa_seleccionados:
-            if self.mesa[idx].valor_objetivo >= 15:
-                return
             elem = self.mesa[idx]
-            if elem.bloqueada:
+            if elem.valor_objetivo >= 15:
+                return
+            if not misma_fila_valor and elem.bloqueada:
                 messagebox.showwarning(
                     "Fila cerrada",
                     "No puedes modificar una fila cerrada. Debes capturarla con una jugada válida o jugar en otra parte de la mesa."
                 )
                 return
-            if elem.creador_id == self.turno_jugador:
+            if not misma_fila_valor and elem.creador_id == self.turno_jugador:
                 messagebox.showwarning(
                     "Sumatoria propia",
                     "No puedes formar otra suma sobre una sumatoria que tú mismo creaste. El rival debe ampliarla primero."
