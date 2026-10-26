@@ -249,8 +249,8 @@ class CasinoRoyaleApp:
         lbl_sub = tk.Label(frame_menu, text="Selecciona el modo de juego", font=("Arial", 14, "bold"), bg="#2d0a0a", fg="#f5b041")
         lbl_sub.pack(pady=10)
 
-        btn_1v1 = tk.Button(frame_menu, text="👥 Jugador vs Jugador (1v1 Local)", font=("Arial", 13, "bold"), bg="#3d1414", fg="#f5b041", activebackground="#5a1e1e", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('1v1'))
-        btn_1v1.pack(pady=8)
+        btn_prueba = tk.Button(frame_menu, text="🧪 Modo de Pruebas", font=("Arial", 13, "bold"), bg="#3d303d", fg="#f5b041", activebackground="#5a405a", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('prueba'))
+        btn_prueba.pack(pady=8)
 
         btn_ia = tk.Button(frame_menu, text="🤖 Jugador vs IA Competitiva", font=("Arial", 13, "bold"), bg="#3d1414", fg="#f5b041", activebackground="#5a1e1e", activeforeground="white", width=32, height=2, bd=2, relief="raised", command=lambda: self.iniciar_juego('ia'))
         btn_ia.pack(pady=8)
@@ -444,7 +444,7 @@ class CasinoRoyaleApp:
                 cartas_combinadas.extend(elem.cartas)
 
             self.mesa.append(ElementoMesa(cartas_combinadas, nuevo_objetivo, bloqueada=False, creador_id=jugador_id))
-            self.fusionar_pilas_mesa()
+            self.fusionar_sumatorias_equivalentes(nuevo_objetivo)
             self.ultimo_anuncio_captura = f"➕ {self.obtener_nombre_jugador(jugador_id)} formó {nuevo_objetivo}"
 
         elif tipo_accion == "FILAR":
@@ -483,7 +483,7 @@ class CasinoRoyaleApp:
                 cartas_combinadas.extend(elem.cartas)
 
             self.mesa.append(ElementoMesa(cartas_combinadas, objetivo_fila, bloqueada=True, creador_id=jugador_id))
-            self.fusionar_pilas_mesa()
+            self.fusionar_sumatorias_equivalentes(objetivo_fila)
             self.ultimo_anuncio_captura = f"🛡️ {self.obtener_nombre_jugador(jugador_id)} formó {objetivo_fila}"
 
         elif tipo_accion == "CAPTURAR":
@@ -521,6 +521,121 @@ class CasinoRoyaleApp:
             self.iniciar_nueva_partida()
         else:
             self.lbl_seleccion.config(text="Esperando que ambos jugadores estén en la sala...")
+
+    def carta_prueba(self, nominal, palo="Corazones"):
+        """Crea una carta para escenarios controlados del modo de pruebas."""
+        return Carta("Especial", 15, es_mona=True) if nominal == 15 else Carta(palo, nominal)
+
+    def cargar_escenario_prueba(self, escenario):
+        """Carga una situación reproducible sin abrir una segunda ventana."""
+        if self.modo_juego != 'prueba':
+            return
+
+        self.ronda_actual = 1
+        self.turno_jugador = 1
+        self.mi_id_jugador = 1
+        self.poseedor_llaves = 1
+        self.pozo_j1, self.pozo_j2 = [], []
+        self.carta_seleccionada_temporal = None
+        self.indices_mesa_seleccionados = []
+        self.ia_ejecutando = False
+        self.mesa = []
+
+        # Manos de reserva para que el turno no termine durante las pruebas.
+        self.mano_j1 = [
+            self.carta_prueba(4, "Corazones"),
+            self.carta_prueba(10, "Picas"),
+            self.carta_prueba(1, "Diamantes"),
+            self.carta_prueba(7, "Tréboles"),
+            self.carta_prueba(15),
+        ]
+        self.mano_j2 = [
+            self.carta_prueba(2, "Picas"),
+            self.carta_prueba(5, "Diamantes"),
+            self.carta_prueba(9, "Corazones"),
+            self.carta_prueba(11, "Tréboles"),
+            self.carta_prueba(1, "Picas"),
+        ]
+
+        if escenario == "fila10":
+            self.mesa = [
+                ElementoMesa([self.carta_prueba(10, "Corazones"),
+                              self.carta_prueba(10, "Diamantes")],
+                             10, bloqueada=True, creador_id=2),
+                ElementoMesa([self.carta_prueba(5, "Tréboles")], 5, creador_id=2),
+            ]
+            self.mano_j1 = [self.carta_prueba(10, "Picas"), self.carta_prueba(10, "Corazones"),
+                            self.carta_prueba(4, "Corazones"), self.carta_prueba(1, "Diamantes"),
+                            self.carta_prueba(15)]
+            descripcion = "Prueba: selecciona el 10 de tu mano, selecciona la fila de 10 y pulsa Filar."
+
+        elif escenario == "fusion15":
+            self.mesa = [
+                ElementoMesa([self.carta_prueba(13, "Corazones"), self.carta_prueba(2, "Picas")],
+                             15, bloqueada=False, creador_id=2),
+                ElementoMesa([self.carta_prueba(11, "Diamantes"), self.carta_prueba(4, "Tréboles")],
+                             15, bloqueada=False, creador_id=1),
+                ElementoMesa([self.carta_prueba(10, "Picas")], 10, creador_id=2),
+                ElementoMesa([self.carta_prueba(5, "Corazones")], 5, creador_id=2),
+            ]
+            descripcion = "Prueba: hay dos formaciones de 15 y cartas sueltas 10+5. Usa «Fusionar mesa*» para revisar la agrupación; después repite jugadas normales."
+
+        elif escenario == "as":
+            self.mesa = [
+                ElementoMesa([self.carta_prueba(11, "Diamantes")], 11, creador_id=2),
+                ElementoMesa([self.carta_prueba(3, "Tréboles")], 3, creador_id=2),
+                ElementoMesa([self.carta_prueba(1, "Picas")], 1, creador_id=2),
+            ]
+            self.mano_j1 = [self.carta_prueba(1, "Corazones"), self.carta_prueba(4, "Corazones"),
+                            self.carta_prueba(7, "Tréboles"), self.carta_prueba(10, "Picas"),
+                            self.carta_prueba(15)]
+            descripcion = "Prueba: usa el As de la mano para comprobar capturas con As flexible (1 o 14)."
+
+        elif escenario == "cerrada":
+            self.mesa = [
+                ElementoMesa([self.carta_prueba(8, "Corazones"), self.carta_prueba(1, "Diamantes")],
+                             9, bloqueada=True, creador_id=2),
+                ElementoMesa([self.carta_prueba(4, "Tréboles")], 4, creador_id=2),
+            ]
+            self.mano_j1 = [self.carta_prueba(4, "Corazones"), self.carta_prueba(9, "Picas"),
+                            self.carta_prueba(1, "Diamantes"), self.carta_prueba(7, "Tréboles"),
+                            self.carta_prueba(15)]
+            descripcion = "Prueba: intenta ampliar la fila cerrada de 9 con el 4; debe bloquearse. Luego prueba capturar con 9."
+
+        elif escenario == "propia":
+            self.mesa = [
+                ElementoMesa([self.carta_prueba(5, "Corazones"), self.carta_prueba(2, "Diamantes")],
+                             7, bloqueada=False, creador_id=1),
+                ElementoMesa([self.carta_prueba(3, "Tréboles")], 3, creador_id=2),
+            ]
+            self.mano_j1 = [self.carta_prueba(4, "Corazones"), self.carta_prueba(7, "Picas"),
+                            self.carta_prueba(1, "Diamantes"), self.carta_prueba(10, "Picas"),
+                            self.carta_prueba(15)]
+            descripcion = "Prueba: intenta ampliar tu propia sumatoria de 7; debe bloquearse. Prueba después una captura válida o juega en otra parte."
+
+        else:
+            return
+
+        self.ultimo_anuncio_captura = descripcion
+        self.lbl_seleccion.config(text=descripcion)
+        self.actualizar_vista()
+
+    def cambiar_turno_prueba(self):
+        if self.modo_juego != 'prueba':
+            return
+        self.turno_jugador = 2 if self.turno_jugador == 1 else 1
+        self.mi_id_jugador = self.turno_jugador
+        self.carta_seleccionada_temporal = None
+        self.indices_mesa_seleccionados = []
+        self.actualizar_vista()
+
+    def fusionar_mesa_prueba(self):
+        if self.modo_juego != 'prueba':
+            return
+        self.fusionar_pilas_mesa()
+        self.fusionar_sumatorias_equivalentes(15)
+        self.ultimo_anuncio_captura = "Diagnóstico: se fusionaron pilas equivalentes y combinaciones sueltas que completan 15."
+        self.actualizar_vista()
 
     def obtener_imagen_carta(self, carta, ancho=80, alto=112):
         if getattr(sys, 'frozen', False):
@@ -575,6 +690,34 @@ class CasinoRoyaleApp:
     def crear_interfaz_juego(self):
         lbl_titulo = tk.Label(self.root, text="♠ CASINO MASTER - TRADICIÓN DIGITAL ♦", font=("Times New Roman", 18, "bold"), bg="#2d0a0a", fg="#d4af37")
         lbl_titulo.pack(pady=3)
+
+        if self.modo_juego == 'prueba':
+            barra_pruebas = tk.Frame(self.root, bg="#2d0a0a")
+            barra_pruebas.pack(fill="x", padx=12, pady=2)
+            tk.Label(barra_pruebas, text="PRUEBAS:", font=("Arial", 9, "bold"), bg="#2d0a0a", fg="#00ffcc").pack(side="left", padx=4)
+            escenarios = [
+                ("Fila 10", "fila10"),
+                ("Fusión 15", "fusion15"),
+                ("As flexible", "as"),
+                ("Fila cerrada", "cerrada"),
+                ("Sumatoria propia", "propia"),
+            ]
+            for texto, clave in escenarios:
+                tk.Button(
+                    barra_pruebas, text=texto, font=("Arial", 8, "bold"),
+                    bg="#3d303d", fg="#ffd700", activebackground="#5a405a",
+                    command=lambda k=clave: self.cargar_escenario_prueba(k)
+                ).pack(side="left", padx=3)
+            tk.Button(
+                barra_pruebas, text="Cambiar turno", font=("Arial", 8, "bold"),
+                bg="#234e35", fg="white",
+                command=self.cambiar_turno_prueba
+            ).pack(side="left", padx=3)
+            tk.Button(
+                barra_pruebas, text="Fusionar mesa*", font=("Arial", 8, "bold"),
+                bg="#4a1212", fg="white",
+                command=self.fusionar_mesa_prueba
+            ).pack(side="left", padx=3)
 
         self.lbl_estado = tk.Label(self.root, text="", font=("Arial", 11, "bold"), bg="#2d0a0a", fg="#f39c12")
         self.lbl_estado.pack(pady=2)
@@ -948,7 +1091,8 @@ class CasinoRoyaleApp:
         # desincronizar clientes y duplicar o dejar formaciones atascadas.
         # Las fusiones deben ocurrir dentro de las acciones del juego.
         id_j_actual = self.turno_jugador
-        mano_actual = self.mano_j1 if self.mi_id_jugador == 1 else self.mano_j2
+        id_mano_mostrar = self.turno_jugador if self.modo_juego == 'prueba' else self.mi_id_jugador
+        mano_actual = self.mano_j1 if id_mano_mostrar == 1 else self.mano_j2
         nombre_turno = self.obtener_nombre_jugador(self.turno_jugador)
         
         self.lbl_estado.config(
@@ -1607,7 +1751,7 @@ class CasinoRoyaleApp:
         total_j1 = brillos_j1 + duque_j1 + ases_j1 + mona_j1 + pts_cartas_j1 + pts_picas_j1
         total_j2 = brillos_j2 + duque_j2 + ases_j2 + mona_j2 + pts_cartas_j2 + pts_picas_j2
 
-        nombre_j2 = "Jugador 2" if self.modo_juego in ['1v1', 'online'] else "IA Competitiva"
+        nombre_j2 = "Jugador 2" if self.modo_juego in ['online', 'prueba'] else "IA Competitiva"
         
         if total_j1 > total_j2:
             ganador_txt = "¡JULIAN GANA LA PARTIDA!"
