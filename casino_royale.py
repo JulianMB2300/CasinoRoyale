@@ -681,18 +681,32 @@ class CasinoRoyaleApp:
                 dic_agrupado[obj] = {
                     'cartas': list(elem.cartas),
                     'bloqueada': elem.bloqueada,
-                    'creador_id': elem.creador_id
+                    'creador_id': elem.creador_id,
+                    'elementos_fusionados': 1
                 }
             else:
+                # Dos elementos independientes con el mismo valor forman una
+                # fila cerrada. Ejemplo: una formación 8+As que vale 9 se une
+                # con otro 9; desde ese momento no se puede sumar un 4 encima.
                 dic_agrupado[obj]['cartas'].extend(elem.cartas)
-                if elem.bloqueada:
-                    dic_agrupado[obj]['bloqueada'] = True
+                dic_agrupado[obj]['elementos_fusionados'] += 1
+                dic_agrupado[obj]['bloqueada'] = True
                 if elem.creador_id is not None:
                     dic_agrupado[obj]['creador_id'] = elem.creador_id
 
         nueva_mesa = []
         for obj, datos in dic_agrupado.items():
-            nueva_mesa.append(ElementoMesa(datos['cartas'], obj, bloqueada=datos['bloqueada'], creador_id=datos['creador_id']))
+            bloqueada_final = (
+                datos['bloqueada'] or datos['elementos_fusionados'] > 1
+            )
+            nueva_mesa.append(
+                ElementoMesa(
+                    datos['cartas'],
+                    obj,
+                    bloqueada=bloqueada_final,
+                    creador_id=datos['creador_id']
+                )
+            )
         self.mesa = nueva_mesa
 
     def iniciar_nueva_partida(self):
